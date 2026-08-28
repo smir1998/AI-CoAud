@@ -1,0 +1,53 @@
+# ── AI CoAudS — full stack ───────────────────────────────
+#   docker compose up --build
+#     web  → http://localhost:8080   (audit console)
+#     api  → http://localhost:8000   (webhook + audit workers)
+#     redis→ state store
+#
+# Production: put Caddy/Traefik in front for TLS, and point the
+# GitHub webhook at https://your-host/webhook
+services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN:?set GITHUB_TOKEN in .env}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-5}
+      ALLOWED_REPOS: ${ALLOWED_REPOS:-}
+      REDIS_URL: redis://redis:6379/0
+      WORKERS: ${WORKERS:-2}
+      MAX_QUEUE: ${MAX_QUEUE:-20}
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis-data:

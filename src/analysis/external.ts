@@ -2,6 +2,8 @@
    GitHub public reads need no token (CORS-enabled). Posting a review needs a PAT.
    LLM calls go direct from the browser with the user's own key. */
 
+import { CONFIG } from "../config";
+
 export interface PRMeta {
   owner: string;
   repo: string;
@@ -23,7 +25,9 @@ export interface PRFilePatch {
   patch?: string;
 }
 
-const GH = "https://api.github.com";
+import { CONFIG } from "../config";
+
+const GH = CONFIG.endpoints.github;
 const GH_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
 
 async function gh<T>(url: string, init?: RequestInit): Promise<T> {
