@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import originalReadme from "../../README.md?raw";
 import Markdown from "./Markdown";
 import { SECURITY_RULES_INDEX, STYLE_CHECKS_INDEX } from "../analysis/scanner";
@@ -12,7 +12,8 @@ const SETTINGS_KEY = "ai-coauds.settings.v1";
 function loadDraft(): string {
   try {
     const v = localStorage.getItem(DRAFT_KEY);
-    if (v !== null) return v;
+    // an empty stored draft would render as a mysteriously blank preview — treat it as "no draft"
+    if (v !== null && v.trim() !== "") return v;
   } catch { /* storage unavailable */ }
   return originalReadme;
 }
@@ -238,6 +239,35 @@ function PushModal({ text, onClose }: { text: string; onClose: () => void }) {
   );
 }
 
+/* ── preview fault isolation ──────────────────────────────── */
+
+class PreviewBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="panel border-rosex/50 p-4">
+        <p className="panel-head text-rosex">preview crashed</p>
+        <p className="pt-2 font-mono text-[11px] leading-relaxed text-rosex/90">
+          {this.state.error.name}: {this.state.error.message}
+        </p>
+        <p className="pt-1.5 text-[12px] text-ink-300">
+          The renderer threw while building this preview. Your markdown is safe in the editor — details are in the browser console.
+        </p>
+        <button
+          onClick={() => this.setState({ error: null })}
+          className="mt-3 rounded-md border border-orchid/50 bg-orchid/[0.1] px-3 py-1 font-display text-[11px] font-semibold text-orchid transition-colors hover:bg-orchid/[0.18]"
+        >
+          retry render
+        </button>
+      </div>
+    );
+  }
+}
+
 /* ── studio ───────────────────────────────────────────────── */
 
 type Mode = "edit" | "split" | "preview";
@@ -321,6 +351,14 @@ export default function Readme() {
 
   const showEditor = mode !== "preview";
   const showPreview = mode !== "edit";
+
+  // renderer diagnostics — blocks as state (drives re-render), ms in a ref (never loops)
+  const [blocks, setBlocks] = useState(0);
+  const msRef = useRef(0);
+  const onStats = useCallback((b: number, ms: number) => {
+    msRef.current = ms;
+    setBlocks((prev) => (prev === b ? prev : b));
+  }, []);
 
   const toolBtn =
     "flex items-center gap-1.5 rounded-md border border-ink-600 px-2.5 py-1.5 font-display text-[10.5px] font-semibold tracking-wide text-ink-300 transition-all hover:border-ink-500 hover:bg-ink-800 hover:text-ink-100";
@@ -436,12 +474,32 @@ export default function Readme() {
           <section className="anim-rise panel flex min-h-[420px] flex-col overflow-hidden lg:h-[calc(100vh-320px)] lg:min-h-[480px]" style={{ animationDelay: "160ms" }}>
             <header className="flex items-center gap-2.5 border-b border-ink-700/60 bg-ink-900/60 px-4 py-2.5">
               <span className="font-mono text-[10px] text-ink-400">preview</span>
+              <span className="font-mono text-[9.5px] text-ink-500">
+                {blocks} blocks · {msRef.current.toFixed(1)}ms
+              </span>
               <span className="ml-auto flex items-center gap-1.5 font-mono text-[9.5px] text-emx">
                 <span className="led-pulse inline-block h-1.5 w-1.5 rounded-full bg-emx" style={{ color: "#10b981" }} /> live
               </span>
             </header>
             <div className="scroll-thin flex-1 overflow-auto px-6 py-5">
-              <Markdown text={text} />
+              {text.trim() === "" ? (
+                <div className="panel mx-auto mt-8 max-w-md border-ink-600 p-6 text-center">
+                  <p className="font-display text-[15px] font-semibold text-ink-200">Nothing to preview</p>
+                  <p className="pt-1.5 text-[12.5px] leading-relaxed text-ink-400">
+                    The markdown source is empty — either it was cleared in the editor, or a stale blank draft was loaded from local storage.
+                  </p>
+                  <button
+                    onClick={revert}
+                    className="mt-4 rounded-md border border-orchid/50 bg-orchid/[0.1] px-4 py-1.5 font-display text-[11.5px] font-semibold text-orchid transition-colors hover:bg-orchid/[0.18]"
+                  >
+                    restore shipped README
+                  </button>
+                </div>
+              ) : (
+                <PreviewBoundary>
+                  <Markdown text={text} onStats={onStats} />
+                </PreviewBoundary>
+              )}
             </div>
           </section>
         )}

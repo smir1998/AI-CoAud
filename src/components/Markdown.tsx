@@ -88,13 +88,24 @@ function collectList(lines: string[], i: number): { items: ListItem[]; next: num
   return { items, next: i, ordered };
 }
 
-export default function Markdown({ text }: { text: string }) {
+interface MdProps {
+  text: string;
+  onStats?: (blocks: number, ms: number) => void;
+}
+
+export default function Markdown({ text, onStats }: MdProps) {
+  const t0 = typeof performance !== "undefined" ? performance.now() : 0;
   const lines = text.split("\n");
   const out: ReactNode[] = [];
   let i = 0;
   let k = 0;
+  let guard = 0;
+  const maxIter = lines.length * 6 + 64;
+  let runaway = false;
 
+  try {
   while (i < lines.length) {
+    if (++guard > maxIter) { runaway = true; break; }
     const line = lines[i];
     const key = `b${k++}`;
 
@@ -208,6 +219,37 @@ export default function Markdown({ text }: { text: string }) {
       i++;
     }
     out.push(<p key={key} className="md-p">{inline(buf.join(" "), key)}</p>);
+  }
+  } catch (err) {
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    if (typeof console !== "undefined") console.error("[ai-coauds] markdown parse failed:", err);
+    return (
+      <div className="md-body">
+        <div className="panel border-rosex/50 p-4">
+          <p className="panel-head text-rosex">preview engine fault</p>
+          <p className="pt-2 font-mono text-[11px] text-rosex/90">{msg}</p>
+          <p className="pt-1.5 text-[12px] text-ink-300">
+            The parser threw on this input, so the raw markdown is shown instead. The editor is unaffected.
+          </p>
+        </div>
+        <pre className="md-pre mt-4 whitespace-pre-wrap">{text}</pre>
+      </div>
+    );
+  }
+
+  if (runaway) {
+    out.push(
+      <div key="runaway" className="panel mt-3 border-amberx/50 p-3 font-mono text-[10.5px] text-amberx">
+        parser iteration guard tripped — remaining lines shown raw
+      </div>,
+    );
+    out.push(<pre key="runaway-raw" className="md-pre mt-2 whitespace-pre-wrap">{lines.slice(Math.max(0, i - 1)).join("\n")}</pre>);
+  }
+
+  if (typeof onStats === "function") {
+    const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
+    // report after commit so we never setState during render
+    setTimeout(() => onStats(out.length, ms), 0);
   }
 
   return <div className="md-body">{out}</div>;
