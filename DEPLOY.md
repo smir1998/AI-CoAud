@@ -81,7 +81,9 @@ client-side — it talks to `api.github.com` and the LLM providers directly.
 
 ### D. GitHub Pages
 
-Set `base: "/repo-name/"` handling via `VITE_BASE` and publish `dist/`.
+The console assumes it is served from a domain root. For a `/<repo>/` subpath,
+set `base: "/<repo>/"` in `vite.config.js`, rebuild, and publish `dist/`
+(e.g. via the `actions/deploy-pages` workflow).
 
 ## 4 — Secrets checklist
 

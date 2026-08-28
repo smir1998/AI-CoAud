@@ -14,7 +14,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from state import Finding, Severity
+from state import Finding
 
 log = logging.getLogger("coauds.agents")
 

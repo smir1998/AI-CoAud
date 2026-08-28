@@ -6,7 +6,6 @@ each pipeline stage so a crashed worker can be inspected mid-flight.
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
 import uuid
@@ -91,14 +90,10 @@ class AuditState(BaseModel):
         log.info("[%s] %s: %s", self.run_id, agent, text)
 
     def recount(self) -> None:
-        counts = {s.value: 0 for s in Severity}
-        for f in self.findings:
-            counts[f.severity.value] += 1
         rank = max((SEVERITY_RANK[f.severity.value] for f in self.findings), default=0)
         self.overall_risk = Severity(
             {4: "critical", 3: "high", 2: "medium", 1: "low", 0: "info"}[rank]
         )
-        self._counts = counts  # type: ignore[attr-defined]
 
     @property
     def counts(self) -> dict[str, int]:

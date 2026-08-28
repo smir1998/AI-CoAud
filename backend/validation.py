@@ -69,7 +69,7 @@ def _check_patch(f: Finding, lines: list[str]) -> list[dict]:
     patch = f.patch
     assert patch is not None
 
-    target_exists = any(l.strip() == patch.before.strip() for l in lines)
+    target_exists = any(ln.strip() == patch.before.strip() for ln in lines)
     checks.append({
         "ok": target_exists,
         "text": f"target line exists in {f.file}" if target_exists
