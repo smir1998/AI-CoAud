@@ -25,13 +25,15 @@ export interface PRFilePatch {
   patch?: string;
 }
 
-import { CONFIG } from "../config";
-
 const GH = CONFIG.endpoints.github;
 const GH_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
 
 async function gh<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: { ...GH_HEADERS, ...(init?.headers || {}) } });
+  const res = await fetch(url, {
+    ...init,
+    headers: { ...GH_HEADERS, ...(init?.headers || {}) },
+    signal: init?.signal ?? AbortSignal.timeout(CONFIG.limits.requestTimeoutMs),
+  });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
@@ -112,14 +114,15 @@ export interface LLMResult {
   outputTokens: number;
 }
 
-export const PROVIDER_MODELS: Record<Exclude<Provider, "none">, string[]> = {
-  anthropic: ["claude-sonnet-4-5", "claude-haiku-4-5"],
-  openai: ["gpt-4o", "gpt-4o-mini"],
+export const PROVIDER_MODELS: Record<Exclude<Provider, "none">, readonly string[]> = {
+  anthropic: CONFIG.llm.anthropicModels,
+  openai: CONFIG.llm.openaiModels,
 };
 
 // USD per 1M tokens [input, output]
 const PRICING: Record<string, [number, number]> = {
   "claude-sonnet-4-5": [3, 15], "claude-haiku-4-5": [1, 5],
+  "gpt-4.1": [2, 8], "gpt-4.1-mini": [0.4, 1.6],
   "gpt-4o": [2.5, 10], "gpt-4o-mini": [0.15, 0.6],
 };
 
@@ -128,10 +131,21 @@ export function estimateCost(model: string, inputTokens: number, outputTokens: n
   return (inputTokens / 1e6) * p[0] + (outputTokens / 1e6) * p[1];
 }
 
+function llmError(e: unknown, fallback: string): Error {
+  if (e instanceof DOMException && e.name === "TimeoutError") {
+    return new Error(`provider timed out after ${CONFIG.limits.llmTimeoutMs / 1000}s — retry or switch models`);
+  }
+  if (e instanceof TypeError) return new Error("network unreachable — check connectivity / proxy");
+  return e instanceof Error ? e : new Error(fallback);
+}
+
 export async function callLLM(provider: Exclude<Provider, "none">, apiKey: string, model: string, system: string, prompt: string): Promise<LLMResult> {
   if (provider === "anthropic") {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    let res: Response;
+    try {
+      res = await fetch(`${CONFIG.endpoints.anthropic}/v1/messages`, {
       method: "POST",
+      signal: AbortSignal.timeout(CONFIG.limits.llmTimeoutMs),
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
@@ -139,7 +153,10 @@ export async function callLLM(provider: Exclude<Provider, "none">, apiKey: strin
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({ model, max_tokens: 4096, system, messages: [{ role: "user", content: prompt }] }),
-    });
+      });
+    } catch (e) {
+      throw llmError(e, "anthropic request failed");
+    }
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
       try { msg = (await res.json())?.error?.message || msg; } catch { /* ignore */ }
@@ -154,15 +171,21 @@ export async function callLLM(provider: Exclude<Provider, "none">, apiKey: strin
     };
   }
   // OpenAI
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      response_format: { type: "json_object" },
-      messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${CONFIG.endpoints.openai}/v1/chat/completions`, {
+      method: "POST",
+      signal: AbortSignal.timeout(CONFIG.limits.llmTimeoutMs),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+      }),
+    });
+  } catch (e) {
+    throw llmError(e, "openai request failed");
+  }
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try { msg = (await res.json())?.error?.message || msg; } catch { /* ignore */ }

@@ -33,6 +33,7 @@ export const CONFIG = {
 
   limits: {
     requestTimeoutMs: 60_000,
+    llmTimeoutMs: 150_000,     // model calls legitimately run longer
     maxDiffChars: 24_000,      // per-PR context budget for LLM calls
     maxInlineComments: 50,     // GitHub review payload cap
     maxFilesForLLM: 20,        // beyond this: deterministic engine only

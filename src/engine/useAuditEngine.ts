@@ -5,6 +5,7 @@ import {
   type AgentId, type AuditInput, type FinalReview, type PipelineEvent, type Settings, type SharedSnapshot,
 } from "../analysis/pipeline";
 import type { Provider } from "../analysis/external";
+import { CONFIG } from "../config";
 import { FIXTURES } from "../data/fixtures";
 
 export interface LogLine {
@@ -60,14 +61,14 @@ const initialState = (): EngineState => ({
 
 /* ── settings persistence (keys stay in this browser) ────── */
 
-const SETTINGS_KEY = "ai-coauds.settings.v1";
+const SETTINGS_KEY = CONFIG.storage.settings;
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { provider: "none", apiKey: "", model: "claude-sonnet-4-5", ghToken: "", ...JSON.parse(raw) } as Settings;
+    if (raw) return { provider: "none", apiKey: "", model: CONFIG.llm.anthropicModel, ghToken: "", ...JSON.parse(raw) } as Settings;
   } catch { /* corrupted storage */ }
-  return { provider: "none", apiKey: "", model: "claude-sonnet-4-5", ghToken: "" };
+  return { provider: "none", apiKey: "", model: CONFIG.llm.anthropicModel, ghToken: "" };
 }
 
 let logSeq = 0;

@@ -1,4 +1,5 @@
 import { Component, useState, type ErrorInfo, type ReactNode } from "react";
+import { CONFIG } from "./config";
 import Architecture from "./components/Architecture";
 import Codebase from "./components/Codebase";
 import Console from "./components/Console";
@@ -121,7 +122,7 @@ export default function App() {
         <footer className="mt-4 border-t border-ink-700/50 bg-ink-950/70">
           <div className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2.5 font-mono text-[10px] text-ink-500 lg:px-5">
             <span className="flex items-center gap-1.5 text-ink-400">
-              <ShieldIcon className="h-3.5 w-3.5 text-orchid" /> ai-coauds v1.0.0
+              <ShieldIcon className="h-3.5 w-3.5 text-orchid" /> ai-coauds v{CONFIG.version}
             </span>
             <span>github webhook → orchestrator → 3 parallel auditors → refactor → review → validation → PR comment</span>
             <span className="ml-auto flex items-center gap-4">

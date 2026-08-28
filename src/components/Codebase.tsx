@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { CODE_FILES } from "../data/codebase";
+import { CONFIG } from "../config";
 import { CheckIcon, CodeIcon, CopyIcon, FileCodeIcon } from "./icons";
 
 const KW = new Set([
@@ -73,13 +74,13 @@ export default function Codebase() {
           <p className="panel-head flex items-center gap-2"><CodeIcon className="h-3.5 w-3.5 text-emx" /> reference implementation</p>
           <h2 className="font-display pt-1 text-[24px] font-bold tracking-wide text-ink-100">ai-coauds / service</h2>
           <p className="max-w-2xl pt-1 text-[13px] leading-relaxed text-ink-300">
-            The production-shaped Python codebase behind the console: FastAPI webhook server, CrewAI crew of five agents,
-            Redis-backed shared state, deterministic SAST runners and the validation gate — containerized with Docker.
+            The real, deployable codebase in this repository — loaded byte-for-byte via <span className="font-mono text-[12px] text-cyanx">?raw</span>:
+            FastAPI webhook server, CrewAI crew, Redis-backed shared state, SAST runners, the validation gate, and the full container + CI setup.
           </p>
         </div>
         <div className="flex items-center gap-2 font-mono text-[10.5px] text-ink-400">
           <span className="chip border-ink-600 text-ink-300">{CODE_FILES.length} files</span>
-          <span className="chip border-ink-600 text-emx">python 3.12</span>
+          <span className="chip border-ink-600 text-emx">v{CONFIG.version}</span>
         </div>
       </header>
 
@@ -139,7 +140,7 @@ export default function Codebase() {
             ))}
           </div>
           <div className="border-t border-ink-700/60 bg-ink-900/70 px-3 py-1.5 font-mono text-[10px] text-ink-500">
-            {lines.length} lines · {file.lang === "python" ? "utf-8 · python" : file.lang} · ai-coauds@1.0.0
+            {lines.length} lines · {file.lang === "python" ? "utf-8 · python" : file.lang} · ai-coauds@{CONFIG.version} · loaded from repo via ?raw
           </div>
         </section>
       </div>
