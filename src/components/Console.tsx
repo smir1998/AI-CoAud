@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuditEngine, type LogLine } from "../engine/useAuditEngine";
 import type { AuditInput } from "../analysis/pipeline";
 import { parsePRRef, PROVIDER_MODELS, type Provider } from "../analysis/external";
+import { CONFIG } from "../config";
 import { SEV_ORDER, type Severity } from "../analysis/scanner";
 import { AGENT_META, SEV_META, type AgentId } from "../types";
 import { FIXTURES } from "../data/fixtures";
@@ -180,7 +181,7 @@ export default function Console() {
                 {(["none", "anthropic", "openai"] as Provider[]).map((p) => (
                   <button key={p} onClick={() => updateSettings({
                     provider: p,
-                    model: p === "anthropic" ? "claude-sonnet-4-5" : p === "openai" ? "gpt-4o" : settings.model,
+                    model: p === "anthropic" ? CONFIG.llm.anthropicModel : p === "openai" ? CONFIG.llm.openaiModel : settings.model,
                   })}
                     className={`flex-1 px-2 py-1.5 font-mono text-[10px] transition-colors ${
                       settings.provider === p ? "bg-orchid/15 text-orchid" : "text-ink-400 hover:text-ink-200"

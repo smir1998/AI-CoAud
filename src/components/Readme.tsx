@@ -2,12 +2,13 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState, type Reac
 import originalReadme from "../../README.md?raw";
 import Markdown from "./Markdown";
 import { SECURITY_RULES_INDEX, STYLE_CHECKS_INDEX } from "../analysis/scanner";
+import { CONFIG } from "../config";
 import {
   BranchIcon, CheckIcon, CopyIcon, DownloadIcon, GearIcon, MarkdownIcon, ReplayIcon, SendIcon, SparkIcon, XIcon, ZapIcon,
 } from "./icons";
 
-const DRAFT_KEY = "ai-coauds.readme.draft.v1";
-const SETTINGS_KEY = "ai-coauds.settings.v1";
+const DRAFT_KEY = CONFIG.storage.readmeDraft;
+const SETTINGS_KEY = CONFIG.storage.settings;
 
 function loadDraft(): string {
   try {

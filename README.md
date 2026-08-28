@@ -45,18 +45,40 @@ npm run build      # production bundle in dist/
 
 Open the **live console**, pick a sample PR or paste `owner/repo#123`. Add keys in the ⚙ drawer to enable LLM agents and real review posting.
 
+## Repository layout
+
+```
+├── src/                    audit console (React + Vite + Tailwind)
+├── backend/                webhook service — FastAPI + CrewAI + scanners
+│   ├── server.py           HMAC-verified webhook, bounded worker pool
+│   ├── pipeline.py         orchestrator: parallel audit → review → post
+│   ├── agents.py           security / style / refactor / review crew
+│   ├── state.py            AuditState + Redis store (in-memory fallback)
+│   ├── github_client.py    diffs + chunked review posting
+│   ├── tools.py            semgrep · bandit · ruff · pip-audit runners
+│   ├── validation.py       patch-parse & apply gate
+│   └── Dockerfile          non-root, healthchecked
+├── deploy/                 Dockerfile.web + production nginx (CSP-locked)
+├── docker-compose.yml      web + api + redis, health-gated startup
+├── .github/workflows/      typecheck · python gate · signed ghcr images
+└── DEPLOY.md               local / VPS / Fly / static-host runbooks
+```
+
 ## Quickstart — Python service
 
-The full reference implementation (FastAPI + CrewAI) ships in the **implementation** tab and deploys with:
+The service deploys with:
 
 ```bash
+cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, LLM keys
 uvicorn server:app --port 8000
 ```
 
-or `docker compose up` for the webhook service + Redis state store.
+or the full stack: `cp backend/.env.example .env && docker compose up --build`
+(console on `:8080`, webhook on `:8000`, see [DEPLOY.md](DEPLOY.md) for TLS,
+webhook wiring and hosting options).
 
 ## Configuration
 

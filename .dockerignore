@@ -1,0 +1,13 @@
+# keep the web image build context lean and secret-free
+node_modules
+dist
+backend
+.git
+.github
+.env
+.env.*
+*.log
+docker-compose.yml
+DEPLOY.md
+
+# NOTE: README.md must stay — the console imports it via ?raw
