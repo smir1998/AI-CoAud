@@ -462,3 +462,18 @@ export function validatePatch(file: ParsedFile, patch: FindingPatch): { ok: bool
 }
 
 export const SEV_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+
+/** Public index of the deterministic security detectors — used by the README studio. */
+export const SECURITY_RULES_INDEX = SEC_RULES.map((r) => ({
+  id: r.id,
+  severity: r.severity,
+  cwe: r.cwe ?? "—",
+  title: r.title,
+  pattern: r.match.source.length > 46 ? `${r.match.source.slice(0, 46)}…` : r.match.source,
+}));
+
+export const STYLE_CHECKS_INDEX = STYLE_TESTS.map((t) => ({
+  id: t.id,
+  severity: t.severity,
+  title: t.title,
+}));

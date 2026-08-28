@@ -19,6 +19,20 @@ function I({ children, ...props }: SVGProps<SVGSVGElement> & { children: ReactNo
 
 type P = SVGProps<SVGSVGElement>;
 
+export const DownloadIcon = (p: P) => (
+  <I {...p}>
+    <path d="M12 4v10m0 0 4-4m-4 4-4-4" />
+    <path d="M5 19h14" />
+  </I>
+);
+
+export const MarkdownIcon = (p: P) => (
+  <I {...p}>
+    <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+    <path d="M6.5 15.5v-7l2.5 3 2.5-3v7M15.5 8.5v5m0 0 2.2-2.2M15.5 13.5l-2.2-2.2" />
+  </I>
+);
+
 export const LogoIcon = (p: P) => (
   <I {...p}>
     <path d="M12 2 4 5.5v5c0 5 3.4 8.8 8 11.5 4.6-2.7 8-6.5 8-11.5v-5L12 2Z" />

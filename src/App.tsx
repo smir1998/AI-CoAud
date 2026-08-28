@@ -2,13 +2,15 @@ import { useState, type ReactNode } from "react";
 import Architecture from "./components/Architecture";
 import Codebase from "./components/Codebase";
 import Console from "./components/Console";
-import { ActivityIcon, BookIcon, CodeIcon, LogoIcon, ShieldIcon, WebhookIcon } from "./components/icons";
+import { ActivityIcon, BookIcon, CodeIcon, LogoIcon, MarkdownIcon, ShieldIcon, WebhookIcon } from "./components/icons";
+import Readme from "./components/Readme";
 
-type View = "console" | "architecture" | "codebase";
+type View = "console" | "architecture" | "readme" | "codebase";
 
 const NAV: { id: View; label: string; icon: ReactNode }[] = [
   { id: "console", label: "live console", icon: <ActivityIcon className="h-3.5 w-3.5" /> },
   { id: "architecture", label: "architecture", icon: <BookIcon className="h-3.5 w-3.5" /> },
+  { id: "readme", label: "readme", icon: <MarkdownIcon className="h-3.5 w-3.5" /> },
   { id: "codebase", label: "implementation", icon: <CodeIcon className="h-3.5 w-3.5" /> },
 ];
 
@@ -72,6 +74,7 @@ export default function App() {
           <div key={view} className="anim-rise">
             {view === "console" && <Console />}
             {view === "architecture" && <Architecture />}
+            {view === "readme" && <Readme />}
             {view === "codebase" && <Codebase />}
           </div>
         </main>
