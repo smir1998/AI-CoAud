@@ -1,215 +1,172 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  AgentId, AgentState, AuditEvent, Finding, FinalReview, LogLine, PullRequest,
-  Severity, SharedState, StageId, StageState,
-} from "../types";
+import type { Finding, ParsedFile, Severity } from "../analysis/scanner";
+import {
+  runPipeline,
+  type AgentId, type AuditInput, type FinalReview, type PipelineEvent, type Settings, type SharedSnapshot,
+} from "../analysis/pipeline";
+import type { Provider } from "../analysis/external";
+import { FIXTURES } from "../data/fixtures";
 
-export const STAGES: { id: StageId; label: string }[] = [
-  { id: "webhook", label: "Webhook received" },
-  { id: "fetch", label: "Fetch PR + diff" },
-  { id: "orchestrate", label: "Orchestrator" },
-  { id: "audit", label: "Parallel audit" },
-  { id: "refactor", label: "Refactor agent" },
-  { id: "review", label: "Review agent" },
-  { id: "validate", label: "Final validation" },
-  { id: "post", label: "Post to GitHub" },
-];
+export interface LogLine {
+  id: number;
+  t: string;
+  agent: AgentId;
+  text: string;
+}
 
 export interface EngineState {
-  time: number;
-  done: boolean;
-  stages: Record<StageId, StageState>;
-  agents: Record<AgentId, AgentState>;
-  findings: Finding[];
+  status: "running" | "done" | "error";
+  stage: number;
+  agents: Record<AgentId, { status: "pending" | "running" | "done"; count: number }>;
   logs: LogLine[];
-  shared: SharedState;
+  files: ParsedFile[];
+  findings: Finding[];
+  shared: SharedSnapshot;
   review: FinalReview | null;
-  postText: string | null;
   validations: { text: string; ok: boolean }[];
+  post: { text: string; url: string | null } | null;
+  error: string | null;
   pulses: Record<string, number>;
 }
 
 const AGENT_IDS: AgentId[] = ["orchestrator", "style", "security", "tools", "refactor", "review"];
 
-function initState(pr: PullRequest): EngineState {
-  const stages = {} as Record<StageId, StageState>;
-  for (const s of STAGES) stages[s.id] = { id: s.id, status: "pending" };
-  const agents = {} as Record<AgentId, AgentState>;
-  for (const a of AGENT_IDS) agents[a] = { id: a, status: "idle", findings: 0 };
-  const additions = pr.files.reduce((s, f) => s + f.additions, 0);
-  const deletions = pr.files.reduce((s, f) => s + f.deletions, 0);
-  return {
-    time: 0,
-    done: false,
-    stages,
-    agents,
-    findings: [],
-    logs: [],
-    shared: {
-      repository: pr.repo,
-      pr_number: pr.number,
-      commit_sha: pr.sha,
-      base_ref: pr.base,
-      head_ref: pr.branch,
-      changed_files: pr.files.length,
-      additions,
-      deletions,
-      diff_loaded: false,
-      findings_total: 0,
-      sev_critical: 0,
-      sev_high: 0,
-      sev_medium: 0,
-      sev_low: 0,
-      sev_info: 0,
-      patches_generated: 0,
-      validations: [],
-      overall_risk: null,
-      posted: false,
-    },
-    review: null,
-    postText: null,
-    validations: [],
-    pulses: {},
-  };
-}
+const initialAgents = () =>
+  Object.fromEntries(AGENT_IDS.map((id) => [id, { status: "pending", count: 0 }])) as EngineState["agents"];
 
-function recount(findings: Finding[]): Partial<SharedState> {
-  const c: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
-  for (const f of findings) if (f.status !== "merged") c[f.severity]++;
-  return {
-    findings_total: findings.filter((f) => f.status !== "merged").length,
-    sev_critical: c.critical,
-    sev_high: c.high,
-    sev_medium: c.medium,
-    sev_low: c.low,
-    sev_info: c.info,
-  };
+const zeroCounts = (): Record<Severity, number> => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
+
+const initialShared = (): SharedSnapshot => ({
+  source: "—", sourceUrl: null, sha: "—", title: "—", author: "—", base: "—", head: "—",
+  files: 0, additions: 0, deletions: 0, detectorMode: "deterministic rules",
+  llmModel: null, tokensIn: 0, tokensOut: 0, costUsd: 0,
+  findings: 0, counts: zeroCounts(), patches: 0, risk: null, posted: null, elapsedMs: 0,
+});
+
+const initialState = (): EngineState => ({
+  status: "running",
+  stage: -1,
+  agents: initialAgents(),
+  logs: [],
+  files: [],
+  findings: [],
+  shared: initialShared(),
+  review: null,
+  validations: [],
+  post: null,
+  error: null,
+  pulses: {},
+});
+
+/* ── settings persistence (keys stay in this browser) ────── */
+
+const SETTINGS_KEY = "sentinel.settings.v2";
+
+export function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) return { provider: "none", apiKey: "", model: "claude-sonnet-4-5", ghToken: "", ...JSON.parse(raw) } as Settings;
+  } catch { /* corrupted storage */ }
+  return { provider: "none", apiKey: "", model: "claude-sonnet-4-5", ghToken: "" };
 }
 
 let logSeq = 0;
 
-const COUNT_KEYS = ["findings", "findings_total", "sev_critical", "sev_high", "sev_medium", "sev_low", "sev_info"];
+export function useAuditEngine() {
+  const [state, setState] = useState<EngineState>(initialState);
+  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [input, setInput] = useState<AuditInput>({ kind: "fixture", fixture: FIXTURES[0] });
+  const genRef = useRef(0);
 
-function applyEvent(s: EngineState, e: AuditEvent): EngineState {
-  const pulse = (key: string) => ({ ...s.pulses, [key]: Date.now() + Math.random() });
-  const pulseCounts = () => {
-    const p = { ...s.pulses };
-    const stamp = Date.now() + Math.random();
-    for (const k of COUNT_KEYS) p[k] = stamp + Math.random() * 0.5;
-    return p;
-  };
-  switch (e.type) {
-    case "log": {
-      const line: LogLine = { id: ++logSeq, t: e.at, agent: e.agent, text: e.text };
-      return { ...s, logs: [...s.logs.slice(-90), line] };
-    }
-    case "stage":
-      return {
-        ...s,
-        stages: { ...s.stages, [e.id]: { id: e.id, status: e.status, detail: e.detail ?? s.stages[e.id].detail } },
-      };
-    case "agent":
-      return { ...s, agents: { ...s.agents, [e.id]: { ...s.agents[e.id], status: e.status } } };
-    case "finding": {
-      const findings = [...s.findings, e.finding];
-      return {
-        ...s,
-        findings,
-        agents: { ...s.agents, [e.finding.agent]: { ...s.agents[e.finding.agent], findings: s.agents[e.finding.agent].findings + 1 } },
-        shared: { ...s.shared, ...recount(findings) },
-        pulses: pulseCounts(),
-      };
-    }
-    case "patch": {
-      const findings = s.findings.map((f) =>
-        f.id === e.id ? { ...f, patch: e.patch, note: e.note ?? f.note, status: "confirmed" as const } : f
-      );
-      return { ...s, findings, pulses: pulse("patches") };
-    }
-    case "merge": {
-      const findings = s.findings.map((f) =>
-        f.id === e.into
-          ? { ...f, corroboratedBy: [...(f.corroboratedBy ?? []), e.tool ?? "tool"], note: e.note, confidence: Math.min(0.99, f.confidence + 0.02) }
-          : f
-      );
-      return { ...s, findings, pulses: pulse("findings") };
-    }
-    case "dismiss": {
-      const findings = s.findings.map((f) =>
-        f.id === e.id ? { ...f, note: e.note, severity: e.toSeverity ?? f.severity, status: "confirmed" as const } : f
-      );
-      return { ...s, findings, shared: { ...s.shared, ...recount(findings) }, pulses: pulseCounts() };
-    }
-    case "state": {
-      const pulses = { ...s.pulses };
-      for (const k of Object.keys(e.patch)) pulses[k] = Date.now() + Math.random();
-      return { ...s, shared: { ...s.shared, ...e.patch }, pulses };
-    }
-    case "validation":
-      return { ...s, validations: [...s.validations, { text: e.text, ok: e.ok }] };
-    case "review": {
-      const findings = s.findings.map((f) => (f.status === "merged" ? f : { ...f, status: "confirmed" as const }));
-      return { ...s, review: e.review, findings, pulses: pulse("review") };
-    }
-    case "post":
-      return { ...s, postText: e.text };
-    default:
-      return s;
-  }
-}
+  const updateSettings = useCallback((patch: Partial<Settings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      if (next.provider !== "none" && !next.apiKey) {
+        // keep model coherent when switching provider
+      }
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+      return next;
+    });
+  }, []);
 
-export function useAuditEngine(pr: PullRequest) {
-  const [state, setState] = useState<EngineState>(() => initState(pr));
-  const [running, setRunning] = useState(true);
-  const [speed, setSpeed] = useState(2);
-  const idxRef = useRef(0);
-  const timeRef = useRef(0);
-  const speedRef = useRef(speed);
-  speedRef.current = speed;
+  const apply = useCallback((s: EngineState, e: PipelineEvent): EngineState => {
+    const stamp = () => Date.now() + Math.random();
+    const pulseKeys = (keys: string[]) => {
+      const p = { ...s.pulses };
+      for (const k of keys) p[k] = stamp() + Math.random() * 0.4;
+      return p;
+    };
+    switch (e.kind) {
+      case "stage":
+        return { ...s, stage: e.stage, pulses: pulseKeys([`stage-${e.stage}`]) };
+      case "agent": {
+        const agents = { ...s.agents, [e.id]: { status: e.status, count: e.count ?? s.agents[e.id].count } };
+        return { ...s, agents, pulses: pulseKeys([`agent-${e.id}`]) };
+      }
+      case "log":
+        return {
+          ...s,
+          logs: [...s.logs.slice(-220), { id: ++logSeq, t: new Date().toLocaleTimeString("en-GB"), agent: e.agent, text: e.text }],
+        };
+      case "files":
+        return { ...s, files: e.files, pulses: pulseKeys(["files"]) };
+      case "finding": {
+        const findings = [...s.findings, e.finding];
+        return {
+          ...s, findings,
+          pulses: pulseKeys(["findings", "findings_total", `sev_${e.finding.severity}`]),
+        };
+      }
+      case "patch": {
+        const findings = s.findings.map((f) => (f.id === e.findingId ? { ...f, patch: e.patch } : f));
+        return { ...s, findings, pulses: pulseKeys(["patches"]) };
+      }
+      case "state":
+        return {
+          ...s, shared: { ...s.shared, ...e.patch },
+          pulses: pulseKeys(Object.keys(e.patch).map((k) => `sh_${k}`)),
+        };
+      case "review":
+        return { ...s, review: e.review, pulses: pulseKeys(["review"]) };
+      case "validations":
+        return { ...s, validations: e.items };
+      case "post":
+        return { ...s, post: { text: e.text, url: e.url }, pulses: pulseKeys(["post"]) };
+      case "error":
+        return { ...s, status: "error", error: e.message, stage: s.stage };
+      case "done":
+        return { ...s, status: "done" };
+      default:
+        return s;
+    }
+  }, []);
 
-  const trigger = useCallback(() => {
-    idxRef.current = 0;
-    timeRef.current = 0;
-    setState(initState(pr));
-    setRunning(true);
-  }, [pr]);
+  const run = useCallback((nextInput: AuditInput, s?: Settings) => {
+    const gen = ++genRef.current;
+    const cfg = s ?? loadSettings();
+    setInput(nextInput);
+    setState({ ...initialState(), status: "running" });
+    const cancelled = () => genRef.current !== gen;
+    void runPipeline(nextInput, cfg, (e) => {
+      if (cancelled()) return;
+      setState((prev) => apply(prev, e));
+    }, cancelled).finally(() => {
+      if (cancelled()) return; // a newer run owns the state now
+      setState((prev) => (prev.status === "running" ? { ...prev, status: "done" } : prev));
+    });
+  }, [apply]);
 
+  const rerun = useCallback(() => run(input, settings), [run, input, settings]);
+  const cancel = useCallback(() => {
+    genRef.current++;
+    setState((prev) => (prev.status === "running" ? { ...prev, status: "done" } : prev));
+  }, []);
+
+  // audit the first fixture on load so the console opens alive
   useEffect(() => {
-    idxRef.current = 0;
-    timeRef.current = 0;
-    setState(initState(pr));
-    setRunning(true);
-  }, [pr]);
+    run({ kind: "fixture", fixture: FIXTURES[0] }, settings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => {
-    if (!running) return;
-    const iv = setInterval(() => {
-      timeRef.current += 55 * speedRef.current;
-      const t = timeRef.current;
-      const evs = pr.events;
-      let i = idxRef.current;
-      const due: AuditEvent[] = [];
-      while (i < evs.length && evs[i].at <= t) {
-        due.push(evs[i]);
-        i++;
-      }
-      idxRef.current = i;
-      if (due.length > 0) {
-        setState((s) => {
-          let next = s;
-          for (const e of due) next = applyEvent(next, e);
-          return { ...next, time: t };
-        });
-      } else {
-        setState((s) => ({ ...s, time: t }));
-      }
-      if (i >= evs.length && t >= pr.duration) {
-        setRunning(false);
-        setState((s) => ({ ...s, done: true, time: pr.duration }));
-      }
-    }, 55);
-    return () => clearInterval(iv);
-  }, [running, pr]);
-
-  return { state, running, speed, setSpeed, trigger, setRunning };
+  return { state, settings, updateSettings, input, run, rerun, cancel, provider: settings.provider as Provider };
 }

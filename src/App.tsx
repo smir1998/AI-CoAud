@@ -57,7 +57,7 @@ export default function App() {
             <div className="ml-auto flex items-center gap-3 font-mono text-[10px] text-ink-400">
               <span className="hidden items-center gap-1.5 md:flex">
                 <WebhookIcon className="h-3.5 w-3.5 text-cyanx" />
-                listener :8000/webhook
+                api.github.com · direct from browser
               </span>
               <span className="flex items-center gap-1.5 rounded-md border border-emx/40 bg-emx/[0.07] px-2 py-1 text-emx">
                 <span className="led-pulse inline-block h-1.5 w-1.5 rounded-full bg-emx" style={{ color: "#10b981" }} />
@@ -84,8 +84,8 @@ export default function App() {
             </span>
             <span>github webhook → orchestrator → 3 parallel auditors → refactor → review → validation → PR comment</span>
             <span className="ml-auto flex items-center gap-4">
-              <span>crewai + fastapi + semgrep/bandit/ruff</span>
-              <span className="text-ink-600">simulation · no tokens were billed</span>
+              <span>reference stack: crewai + fastapi + semgrep/bandit/ruff</span>
+              <span className="text-ink-600">real analysis in your browser · your keys never leave it</span>
             </span>
           </div>
         </footer>

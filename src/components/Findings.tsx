@@ -1,121 +1,115 @@
-import type { Finding, Severity } from "../types";
-import { AGENT_META, SEV_META } from "../types";
-import { MergeIcon, SparkIcon } from "./icons";
+import { useState, type ReactNode } from "react";
+import type { Finding } from "../analysis/scanner";
+import { SEV_META } from "../types";
+import { ChevronIcon, CpuIcon, FileCodeIcon, ShieldIcon, SparkIcon } from "./icons";
 
 interface Props {
   findings: Finding[];
   activeId: string | null;
-  onFocus: (f: Finding) => void;
+  onPick: (id: string) => void;
 }
 
-const SEV_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+const DETECTOR_LABEL: Record<Finding["detector"], { text: string; icon: ReactNode }> = {
+  rule: { text: "deterministic rule", icon: <ShieldIcon className="h-3 w-3" /> },
+  llm: { text: "llm audit", icon: <CpuIcon className="h-3 w-3" /> },
+  hybrid: { text: "rule + llm corroborated", icon: <SparkIcon className="h-3 w-3" /> },
+};
 
-export function sortFindings(list: Finding[]): Finding[] {
-  return [...list].sort(
-    (a, b) =>
-      SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) ||
-      b.confidence - a.confidence
-  );
-}
+export default function Findings({ findings, activeId, onPick }: Props) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
 
-export function FindingCard({ f, active, onFocus }: { f: Finding; active: boolean; onFocus: (f: Finding) => void }) {
-  const sev = SEV_META[f.severity];
-  const agent = AGENT_META[f.agent];
-  return (
-    <article
-      onClick={() => onFocus(f)}
-      className={`anim-rise cursor-pointer rounded-lg border bg-ink-850/80 transition-all duration-200 hover:translate-y-[-1px] hover:border-ink-600 ${
-        active ? "border-orchid/60 shadow-[0_0_0_1px_rgba(56,189,248,0.25),0_8px_24px_-12px_rgba(56,189,248,0.3)]" : "border-ink-700/70"
-      }`}
-      style={{ borderLeftWidth: 3, borderLeftColor: sev.color }}
-    >
-      <header className="flex flex-wrap items-center gap-2 px-4 pt-3">
-        <span className="chip" style={{ color: sev.color, borderColor: sev.border, background: sev.bg }}>
-          {sev.label}
-        </span>
-        <h4 className="font-display text-[13.5px] font-semibold tracking-wide text-ink-100">{f.title}</h4>
-        <span className="ml-auto flex items-center gap-1.5">
-          {f.patch && (
-            <span className="chip inline-flex items-center gap-1 text-emx" style={{ borderColor: "rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.08)" }}>
-              <SparkIcon className="h-3 w-3" /> patch
-            </span>
-          )}
-          {f.corroboratedBy?.map((c) => (
-            <span key={c} className="chip inline-flex items-center gap-1 text-cyanx" style={{ borderColor: "rgba(34,211,238,0.4)", background: "rgba(34,211,238,0.08)" }}>
-              <MergeIcon className="h-3 w-3" /> {c}
-            </span>
-          ))}
-        </span>
-      </header>
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pt-1.5 font-mono text-[10.5px] text-ink-400">
-        <span style={{ color: agent.color }}>▣ {agent.name}</span>
-        <span className="text-ink-300">{f.file}:{f.line}</span>
-        <span className="ml-auto flex items-center gap-1.5">
-          confidence
-          <span className="inline-block h-1 w-14 overflow-hidden rounded-full bg-ink-700">
-            <span className="block h-full rounded-full transition-all duration-700" style={{ width: `${Math.round(f.confidence * 100)}%`, background: sev.color }} />
-          </span>
-          <b className="text-ink-200">{Math.round(f.confidence * 100)}%</b>
-        </span>
-      </div>
-
-      <p className="px-4 pt-2 text-[12.5px] leading-relaxed text-ink-200">{f.issue}</p>
-
-      <p className="px-4 pt-1.5 pb-3 text-[12px] leading-relaxed text-ink-300">
-        <span className="font-display text-[10px] font-semibold tracking-[0.14em] text-ink-400 uppercase">Fix → </span>
-        {f.recommendation}
-      </p>
-
-      {f.note && (
-        <p className="mx-4 mb-3 rounded-md border border-ink-700/70 bg-ink-900/60 px-3 py-1.5 text-[11px] italic text-ink-400">
-          review agent: {f.note}
-        </p>
-      )}
-
-      {f.patch && (
-        <div className="mx-4 mb-4 overflow-hidden rounded-md border border-ink-700/70 font-mono text-[11.5px]">
-          <div className="flex items-center gap-2 border-b border-ink-700/70 bg-ink-900/80 px-3 py-1 font-display text-[9.5px] font-semibold tracking-[0.18em] text-emx uppercase">
-            <SparkIcon className="h-3 w-3" /> suggested refactor
-          </div>
-          <div className="bg-rosex/[0.05]">
-            {f.patch.before.map((l, i) => (
-              <div key={`b${i}`} className="flex px-2 text-ink-200/80">
-                <span className="w-4 shrink-0 text-rosex select-none">−</span>
-                <span className="whitespace-pre-wrap break-all">{l}</span>
-              </div>
-            ))}
-          </div>
-          <div className="bg-emx/[0.06]">
-            {f.patch.after.map((l, i) => (
-              <div key={`a${i}`} className="flex px-2 text-ink-100">
-                <span className="w-4 shrink-0 text-emx select-none">+</span>
-                <span className="whitespace-pre-wrap break-all">{l}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </article>
-  );
-}
-
-export default function Findings({ findings, activeId, onFocus }: Props) {
-  const sorted = sortFindings(findings);
-  if (sorted.length === 0) {
+  if (findings.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-ink-500">
-        <span className="led-pulse inline-block h-2 w-2 rounded-full bg-cyanx" style={{ color: "#22d3ee" }} />
-        <p className="font-mono text-[12px]">awaiting agent reports…</p>
-        <p className="text-[11.5px] text-ink-600">findings stream in here the moment an auditor files them</p>
+      <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 px-6 text-center">
+        <ShieldIcon className="h-8 w-8 text-emx/60" />
+        <p className="font-mono text-[11px] text-ink-400">
+          no findings yet — the audit streams results here as each agent reports
+        </p>
       </div>
     );
   }
+
   return (
-    <div className="scroll-thin h-full space-y-3 overflow-auto p-3">
-      {sorted.map((f) => (
-        <FindingCard key={f.id} f={f} active={f.id === activeId} onFocus={onFocus} />
-      ))}
+    <div className="scroll-thin h-full space-y-2 overflow-auto p-2.5">
+      {findings.map((f, i) => {
+        const sev = SEV_META[f.severity];
+        const isActive = f.id === activeId;
+        const expanded = open[f.id] ?? f.patch !== undefined;
+        const det = DETECTOR_LABEL[f.detector];
+        return (
+          <article
+            key={f.id}
+            onClick={() => onPick(f.id)}
+            className={`anim-slidein cursor-pointer rounded-lg border bg-ink-900/70 transition-all duration-150 ${
+              isActive ? "border-orchid/60 shadow-[0_0_0_1px_rgba(56,189,248,0.25),0_4px_18px_-6px_rgba(56,189,248,0.25)]" : "border-ink-700/70 hover:border-ink-500"
+            }`}
+            style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+          >
+            <header className="flex items-center gap-2 px-3 pt-2.5">
+              <span className="rounded border px-1.5 py-px font-mono text-[9.5px] font-bold tracking-wider"
+                style={{ color: sev.color, borderColor: `${sev.color}55`, background: `${sev.color}14` }}>
+                {sev.label}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); onPick(f.id); }}
+                className="flex items-center gap-1 font-mono text-[10.5px] text-cyanx transition-colors hover:text-ink-100">
+                <FileCodeIcon className="h-3 w-3" />
+                {f.file}:{f.line}
+              </button>
+              <span className="ml-auto font-mono text-[9.5px] text-ink-500">
+                conf <b style={{ color: f.confidence >= 0.85 ? "#10b981" : f.confidence >= 0.7 ? "#facc15" : "#f5a524" }}>
+                  {Math.round(f.confidence * 100)}%
+                </b>
+              </span>
+            </header>
+
+            <h4 className="px-3 pt-1.5 text-[13px] font-semibold text-ink-100">{f.title}</h4>
+
+            <div className="flex flex-wrap items-center gap-1.5 px-3 pt-1.5">
+              <span className="chip border-ink-600 text-[9px] text-ink-300">
+                <span className="text-orchid">{det.icon}</span> {det.text}
+              </span>
+              {f.rule && <span className="chip border-ink-600 font-mono text-[9px] text-ink-300">{f.rule}</span>}
+              {f.cwe && <span className="chip border-rosex/40 font-mono text-[9px] text-rosex/90">{f.cwe}</span>}
+              {f.patch && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpen((o) => ({ ...o, [f.id]: !expanded })); }}
+                  className="chip ml-auto border-emx/40 text-[9px] text-emx transition-colors hover:bg-emx/10">
+                  <ChevronIcon className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                  suggested fix
+                </button>
+              )}
+            </div>
+
+            <p className="px-3 pt-1.5 text-[11.5px] leading-relaxed text-ink-300">{f.issue}</p>
+
+            {f.excerpt && (
+              <pre className="mx-3 mt-2 overflow-x-auto rounded border border-ink-700/60 bg-[#070d18] px-2.5 py-1.5 font-mono text-[10.5px] leading-relaxed text-ink-200">
+                <span className="select-none text-ink-500">L{f.line} </span>{f.excerpt}
+              </pre>
+            )}
+
+            <p className="px-3 pb-2.5 pt-1.5 text-[11.5px] leading-relaxed text-ink-300">
+              <b className="text-emx">Fix: </b>{f.recommendation}
+            </p>
+
+            {f.patch && expanded && (
+              <div className="border-t border-ink-700/60 px-3 py-2">
+                <p className="pb-1.5 font-mono text-[9.5px] tracking-wider text-ink-500">
+                  SUGGESTED REFACTOR · {f.patch.source === "llm" ? "model-generated" : "deterministic template"}
+                </p>
+                <pre className="scroll-thin overflow-x-auto rounded border border-rosex/25 bg-rosex/[0.06] px-2.5 py-1.5 font-mono text-[10.5px] leading-relaxed text-rosex/90">
+                  {f.patch.before}
+                </pre>
+                <pre className="scroll-thin mt-1 overflow-x-auto rounded border border-emx/25 bg-emx/[0.06] px-2.5 py-1.5 font-mono text-[10.5px] leading-relaxed text-emx">
+                  {f.patch.after}
+                </pre>
+                <p className="pt-1.5 text-[10.5px] italic text-ink-400">{f.patch.note}</p>
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }

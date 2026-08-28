@@ -1,137 +1,124 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Finding, PRFile, Severity } from "../types";
+import { useEffect, useRef, useState } from "react";
+import type { Finding, ParsedFile, Severity } from "../analysis/scanner";
 import { SEV_META } from "../types";
+import { DiffIcon } from "./icons";
 
 interface Props {
-  files: PRFile[];
+  files: ParsedFile[];
   findings: Finding[];
   activeId: string | null;
-  onFocus: (f: Finding) => void;
+  onPick: (id: string) => void;
 }
 
-const SEV_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+function topSeverity(findings: Finding[]): Severity | null {
+  if (findings.length === 0) return null;
+  let best = findings[0].severity;
+  for (const f of findings) if (SEV_META[f.severity].rank < SEV_META[best].rank) best = f.severity;
+  return best;
+}
 
-export default function DiffViewer({ files, findings, activeId, onFocus }: Props) {
-  const [fileIdx, setFileIdx] = useState(0);
-  const file = files[Math.min(fileIdx, files.length - 1)];
+export default function DiffViewer({ files, findings, activeId, onPick }: Props) {
+  const [active, setActive] = useState(0);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const focusedRef = useRef<string | null>(null);
+  const file = files[Math.min(active, Math.max(files.length - 1, 0))];
 
-  const active = findings.find((f) => f.id === activeId) ?? null;
+  useEffect(() => { setActive(0); focusedRef.current = null; }, [files]);
 
-  // jump to active finding's file + line
-  useEffect(() => {
-    if (!active) return;
-    const idx = files.findIndex((f) => f.path === active.file);
-    if (idx >= 0 && idx !== fileIdx) setFileIdx(idx);
-  }, [active, files, fileIdx]);
+  const activeFinding = findings.find((f) => f.id === activeId) ?? null;
 
   useEffect(() => {
-    if (!active || focusedRef.current === active.id) return;
-    focusedRef.current = active.id;
-    const key = `${active.file}:${active.line}`;
-    const el = rowRefs.current[key];
-    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [active]);
+    if (!activeFinding || focusedRef.current === activeFinding.id) return;
+    const idx = files.findIndex((f) => f.path === activeFinding.file);
+    if (idx >= 0) setActive(idx);
+    focusedRef.current = activeFinding.id;
+    requestAnimationFrame(() => {
+      const el = rowRefs.current[`${activeFinding.file}:${activeFinding.line}`];
+      if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, [activeFinding, files]);
 
-  useEffect(() => {
-    if (!activeId) focusedRef.current = null;
-  }, [activeId]);
-
-  const lineFindings = useMemo(() => {
-    const map = new Map<number, Finding[]>();
-    for (const f of findings) {
-      if (f.status === "merged" || f.file !== file.path) continue;
-      const arr = map.get(f.line) ?? [];
-      arr.push(f);
-      map.set(f.line, arr);
-    }
-    for (const arr of map.values())
-      arr.sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity));
-    return map;
-  }, [findings, file.path]);
+  if (files.length === 0) {
+    return (
+      <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-ink-400">
+        <DiffIcon className="h-8 w-8 text-ink-600" />
+        <p className="font-mono text-[11px]">diff hunks will render here once the orchestrator fetches them</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full flex-col">
       {/* file tabs */}
-      <div className="flex items-center gap-1 border-b border-ink-700/60 px-2 pt-2">
-        {files.map((f, i) => (
-          <button
-            key={f.path}
-            onClick={() => setFileIdx(i)}
-            className={`group flex items-center gap-2 rounded-t-md border border-b-0 px-3 py-1.5 font-mono text-[11.5px] transition-colors ${
-              i === fileIdx
-                ? "border-ink-600/70 bg-ink-800 text-ink-100"
-                : "border-transparent text-ink-300 hover:bg-ink-800/50 hover:text-ink-200"
-            }`}
-          >
-            <span>{f.path}</span>
-            <span className="text-[10px] text-emx">+{f.additions}</span>
-            {f.deletions > 0 && <span className="text-[10px] text-rosex">−{f.deletions}</span>}
-          </button>
-        ))}
-        <div className="ml-auto hidden pb-1 pr-2 text-[10px] font-mono text-ink-400 sm:block">
-          unified diff · {file.lang}
-        </div>
+      <div className="scroll-thin flex items-center gap-1 overflow-x-auto border-b border-ink-700/60 bg-ink-900/70 px-2 py-1.5">
+        {files.map((f, i) => {
+          const hits = findings.filter((x) => x.file === f.path).length;
+          const worst = topSeverity(findings.filter((x) => x.file === f.path));
+          return (
+            <button key={f.path} onClick={() => setActive(i)}
+              className={`group flex shrink-0 items-center gap-1.5 rounded border px-2 py-1 font-mono text-[10.5px] transition-colors ${
+                i === active ? "border-orchid/50 bg-orchid/10 text-ink-100" : "border-transparent text-ink-300 hover:border-ink-600 hover:text-ink-100"
+              }`}>
+              {worst && <span className="h-1.5 w-1.5 rounded-full" style={{ background: SEV_META[worst].color }} />}
+              {f.path}
+              <span className="text-emx">+{f.additions}</span>
+              <span className="text-rosex">−{f.deletions}</span>
+              {hits > 0 && <span className="rounded bg-ink-700/70 px-1 text-[9px] text-ink-200">{hits}</span>}
+            </button>
+          );
+        })}
       </div>
 
-      {/* diff body */}
-      <div className="scroll-thin min-h-0 flex-1 overflow-auto bg-ink-900/60 py-2 font-mono text-[12px] leading-[1.55]">
-        {file.lines.map((ln, i) => {
-          const fs = ln.n ? lineFindings.get(ln.n) : undefined;
-          const top = fs?.[0];
-          const isActive = top && active && fs?.some((f) => f.id === active.id);
-          const key = `${file.path}:${ln.n ?? "x"}`;
-          const base =
-            ln.t === "add"
-              ? "bg-emx/[0.07] text-ink-100"
-              : ln.t === "del"
-                ? "bg-rosex/[0.08] text-ink-200/80"
-                : "text-ink-300/90";
+      {/* rows */}
+      <div className="scroll-thin min-h-0 flex-1 overflow-auto bg-[#070d18]">
+        {file && file.rows.map((row, i) => {
+          if (row.type === "hunk") {
+            return (
+              <div key={i} className="border-y border-ink-800/80 bg-ink-900/60 px-3 py-0.5 font-mono text-[10.5px] text-cyanx/80">
+                {row.text}
+              </div>
+            );
+          }
+          const marked = row.type === "add" ? findings.filter((f) => f.file === file.path && f.line === row.newNo) : [];
+          const sev = topSeverity(marked);
+          const isActive = !!activeFinding && activeFinding.file === file.path && activeFinding.line === row.newNo;
+          const refKey = `${file.path}:${row.newNo}`;
           return (
             <div
               key={i}
-              ref={(el) => { rowRefs.current[key] = el; }}
-              onClick={() => top && onFocus(top)}
-              className={`group flex items-stretch px-0 transition-colors ${base} ${top ? "cursor-pointer" : ""} ${
-                isActive ? "outline outline-1 -outline-offset-1 outline-orchid/70 bg-orchid/[0.08]" : top ? "hover:bg-ink-700/30" : ""
-              }`}
+              ref={(el) => { if (marked.length) rowRefs.current[refKey] = el; }}
+              onClick={() => marked.length && onPick(marked[0].id)}
+              className={`group flex font-mono text-[11.5px] leading-[1.55] ${marked.length ? "cursor-pointer" : ""} ${
+                isActive ? "ring-1 ring-inset ring-orchid/60" : ""
+              } ${row.type === "add" ? "bg-emx/[0.05]" : row.type === "del" ? "bg-rosex/[0.06]" : ""}`}
             >
-              {/* marker rail */}
-              <div className="flex w-5 shrink-0 items-center justify-center border-r border-ink-700/40">
-                {top && ln.n ? (
-                  <span
-                    className="led-pulse inline-block h-1.5 w-1.5 rounded-full"
-                    style={{ background: SEV_META[top.severity].color, color: SEV_META[top.severity].color }}
-                  />
-                ) : (
-                  <span className="w-3 text-center text-ink-600 select-none">
-                    {ln.t === "add" ? "+" : ln.t === "del" ? "−" : ""}
-                  </span>
+              <span className="w-11 shrink-0 select-none border-r border-ink-800/70 px-1.5 text-right text-[10px] text-ink-500">
+                {row.oldNo ?? ""}
+              </span>
+              <span className="w-11 shrink-0 select-none border-r border-ink-800/70 px-1.5 text-right text-[10px] text-ink-500">
+                {row.newNo ?? ""}
+              </span>
+              <span className={`w-5 shrink-0 select-none text-center ${
+                row.type === "add" ? "text-emx" : row.type === "del" ? "text-rosex" : "text-ink-600"
+              }`}>
+                {row.type === "add" ? "+" : row.type === "del" ? "−" : " "}
+              </span>
+              <span className="relative flex-1 whitespace-pre-wrap break-all pr-8 text-ink-200">
+                {row.text || " "}
+                {sev && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onPick(marked[0].id); }}
+                    title={`${marked.length} finding(s) — click to inspect`}
+                    className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-full border px-1.5 py-px text-[8.5px] font-semibold tracking-wide transition-transform hover:scale-110"
+                    style={{ color: SEV_META[sev].color, borderColor: `${SEV_META[sev].color}66`, background: `${SEV_META[sev].color}1a` }}>
+                    {SEV_META[sev].label}
+                    {marked.length > 1 && `·${marked.length}`}
+                  </button>
                 )}
-              </div>
-              {/* line number */}
-              <div className="w-10 shrink-0 border-r border-ink-700/40 pr-2 text-right text-[10.5px] text-ink-500 select-none"
-                style={{ color: "#4d648f" }}>
-                {ln.n ?? ""}
-              </div>
-              {/* code */}
-              <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre px-3">{ln.c || " "}</pre>
-              {/* sev chip on hover / active */}
-              {top && ln.n && (
-                <div className="flex shrink-0 items-center pr-3 opacity-0 transition-opacity group-hover:opacity-100"
-                  style={{ opacity: isActive ? 1 : undefined }}>
-                  <span className="chip" style={{ color: SEV_META[top.severity].color, borderColor: SEV_META[top.severity].border, background: SEV_META[top.severity].bg }}>
-                    {SEV_META[top.severity].label}{fs && fs.length > 1 ? ` +${fs.length - 1}` : ""}
-                  </span>
-                </div>
-              )}
+              </span>
             </div>
           );
         })}
-        <div className="px-4 pt-3 pb-1 text-[10.5px] text-ink-500">
-          ● marked lines carry live agent findings — click to inspect
-        </div>
       </div>
     </div>
   );
