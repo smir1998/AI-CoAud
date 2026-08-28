@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Component, useState, type ErrorInfo, type ReactNode } from "react";
 import Architecture from "./components/Architecture";
 import Codebase from "./components/Codebase";
 import Console from "./components/Console";
@@ -13,6 +13,42 @@ const NAV: { id: View; label: string; icon: ReactNode }[] = [
   { id: "readme", label: "readme", icon: <MarkdownIcon className="h-3.5 w-3.5" /> },
   { id: "codebase", label: "implementation", icon: <CodeIcon className="h-3.5 w-3.5" /> },
 ];
+
+class ViewBoundary extends Component<{ children: ReactNode; onReset: () => void }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[ai-coauds] view crashed:", error, info.componentStack);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="mx-auto my-10 w-full max-w-xl px-4">
+        <div className="panel border-rosex/40 p-6">
+          <p className="panel-head text-rosex">runtime fault</p>
+          <h2 className="font-display pt-2 text-[20px] font-bold text-ink-100">This view hit an unexpected error</h2>
+          <p className="pt-2 font-mono text-[11.5px] leading-relaxed text-rosex/90">
+            {this.state.error.name}: {this.state.error.message}
+          </p>
+          <p className="pt-2 text-[12.5px] text-ink-300">
+            The rest of the console is unaffected. Reload the view to try again — details were written to the browser console.
+          </p>
+          <button
+            onClick={() => {
+              this.setState({ error: null });
+              this.props.onReset();
+            }}
+            className="mt-4 rounded-md border border-orchid/50 bg-orchid/[0.1] px-4 py-1.5 font-display text-[12px] font-semibold text-orchid transition-colors hover:bg-orchid/[0.18]"
+          >
+            reload view
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
 
 export default function App() {
   const [view, setView] = useState<View>("console");
@@ -71,12 +107,14 @@ export default function App() {
 
         {/* view */}
         <main className="flex-1 pt-3">
-          <div key={view} className="anim-rise">
-            {view === "console" && <Console />}
-            {view === "architecture" && <Architecture />}
-            {view === "readme" && <Readme />}
-            {view === "codebase" && <Codebase />}
-          </div>
+          <ViewBoundary key={view} onReset={() => setView("console")}>
+            <div key={view} className="anim-rise">
+              {view === "console" && <Console />}
+              {view === "architecture" && <Architecture />}
+              {view === "readme" && <Readme />}
+              {view === "codebase" && <Codebase />}
+            </div>
+          </ViewBoundary>
         </main>
 
         {/* footer */}

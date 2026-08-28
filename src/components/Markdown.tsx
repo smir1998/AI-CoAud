@@ -59,12 +59,16 @@ function highlight(code: string, base: string): ReactNode[] {
 }
 
 function splitRow(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split(/(?<!\\)\|/)
-    .map((c) => c.trim().replace(/\\\|/g, "|"));
+  const s = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && s[i + 1] === "|") { cur += "|"; i++; continue; }
+    if (s[i] === "|") { cells.push(cur.trim()); cur = ""; continue; }
+    cur += s[i];
+  }
+  cells.push(cur.trim());
+  return cells;
 }
 
 interface ListItem { text: string; children: string[] }
