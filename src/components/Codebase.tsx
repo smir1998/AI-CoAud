@@ -139,7 +139,7 @@ export default function Codebase() {
             ))}
           </div>
           <div className="border-t border-ink-700/60 bg-ink-900/70 px-3 py-1.5 font-mono text-[10px] text-ink-500">
-            {lines.length} lines · {file.lang === "python" ? "utf-8 · python" : file.lang} · sentinel-crew@1.0.0
+            {lines.length} lines · {file.lang === "python" ? "utf-8 · python" : file.lang} · ai-coauds@1.0.0
           </div>
         </section>
       </div>

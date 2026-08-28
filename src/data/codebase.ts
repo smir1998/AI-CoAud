@@ -10,7 +10,7 @@ export const CODE_FILES: CodeFile[] = [
     name: "server.py",
     lang: "python",
     note: "FastAPI webhook endpoint — HMAC verification + background audit",
-    code: String.raw`"""Sentinel Crew - webhook server.
+    code: String.raw`"""AI CoAudS - webhook server.
 
 Receives GitHub pull_request events, verifies the HMAC signature and
 kicks off the audit pipeline as a background task so the hook answers
@@ -28,9 +28,9 @@ from pipeline import run_audit
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
-log = logging.getLogger("sentinel.server")
+log = logging.getLogger("coauds.server")
 
-app = FastAPI(title="sentinel-crew", version="1.0.0")
+app = FastAPI(title="ai-coauds", version="1.0.0")
 
 WEBHOOK_SECRET = os.environ["GITHUB_WEBHOOK_SECRET"].encode()
 HANDLED_ACTIONS = {"opened", "synchronize", "reopened"}
@@ -69,7 +69,7 @@ async def webhook(request: Request,
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "sentinel-crew"}
+    return {"status": "ok", "service": "ai-coauds"}
 
 
 if __name__ == "__main__":
@@ -93,7 +93,7 @@ from state import AuditState, store
 from tools import run_static_tools
 from validation import validate_patches
 
-log = logging.getLogger("sentinel.pipeline")
+log = logging.getLogger("coauds.pipeline")
 
 gh = GitHubClient()
 
@@ -307,7 +307,7 @@ class RedisStateStore:
         self.r = redis.from_url(url, decode_responses=True)
 
     def key(self, state: AuditState) -> str:
-        return f"sentinel:audit:{state.run_id}"
+        return f"coauds:audit:{state.run_id}"
 
     def save(self, state: AuditState) -> None:
         self.r.set(self.key(state), state.model_dump_json(), ex=86400)
@@ -495,7 +495,7 @@ from pathlib import Path
 
 from state import AuditState
 
-log = logging.getLogger("sentinel.validation")
+log = logging.getLogger("coauds.validation")
 
 
 def validate_patches(state: AuditState) -> None:
@@ -595,8 +595,8 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # non-root user for the webhook service
-RUN useradd --create-home sentinel
-USER sentinel
+RUN useradd --create-home coauds
+USER coauds
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
@@ -610,7 +610,7 @@ CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
     lang: "yaml",
     note: "Local deployment — webhook service + Redis state store",
     code: String.raw`services:
-  sentinel:
+  coauds:
     build: .
     ports:
       - "8000:8000"
@@ -628,7 +628,7 @@ CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
   redis:
     image: redis:7-alpine
     volumes:
-      - sentinel-state:/data
+      - coauds-state:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -636,7 +636,7 @@ CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
       retries: 5
 
 volumes:
-  sentinel-state:
+  coauds-state:
 `,
   },
   {

@@ -60,7 +60,7 @@ const initialState = (): EngineState => ({
 
 /* ── settings persistence (keys stay in this browser) ────── */
 
-const SETTINGS_KEY = "sentinel.settings.v2";
+const SETTINGS_KEY = "ai-coauds.settings.v1";
 
 export function loadSettings(): Settings {
   try {
