@@ -30,7 +30,7 @@ export default function ReviewPanel({ review, validations, shared, post }: Props
     const blob = new Blob([review.markdown], { type: "text/markdown" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `sentinel-review-${shared.source.replace(/[^\w.-]+/g, "-")}.md`;
+    a.download = `ai-coauds-review-${shared.source.replace(/[^\w.-]+/g, "-")}.md`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -98,7 +98,7 @@ export default function ReviewPanel({ review, validations, shared, post }: Props
             <RobotIcon className="h-3.5 w-3.5 text-orchid" />
           </span>
           <div>
-            <p className="text-[12px] font-semibold text-ink-100">sentinel-crew-bot <span className="chip ml-1 border-ink-600 text-[8.5px] text-ink-400">review</span></p>
+            <p className="text-[12px] font-semibold text-ink-100">ai-coauds-bot <span className="chip ml-1 border-ink-600 text-[8.5px] text-ink-400">review</span></p>
             <p className="font-mono text-[9.5px] text-ink-500">
               {post?.url ? (
                 <a href={post.url} target="_blank" rel="noreferrer" className="text-emx hover:underline">posted — view on GitHub ↗</a>

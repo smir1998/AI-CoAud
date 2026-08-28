@@ -29,7 +29,7 @@ export default function App() {
               </span>
               <div className="leading-tight">
                 <h1 className="font-display text-[17px] font-bold tracking-[0.08em] text-ink-100">
-                  SENTINEL<span className="text-orchid">CREW</span>
+                  AI&nbsp;<span className="text-orchid">CoAudS</span>
                 </h1>
                 <p className="font-mono text-[9.5px] tracking-[0.14em] text-ink-400 uppercase">
                   agentic PR audit · multi-agent code review
@@ -80,7 +80,7 @@ export default function App() {
         <footer className="mt-4 border-t border-ink-700/50 bg-ink-950/70">
           <div className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center gap-x-6 gap-y-1 px-3 py-2.5 font-mono text-[10px] text-ink-500 lg:px-5">
             <span className="flex items-center gap-1.5 text-ink-400">
-              <ShieldIcon className="h-3.5 w-3.5 text-orchid" /> sentinel-crew v1.0.0
+              <ShieldIcon className="h-3.5 w-3.5 text-orchid" /> ai-coauds v1.0.0
             </span>
             <span>github webhook → orchestrator → 3 parallel auditors → refactor → review → validation → PR comment</span>
             <span className="ml-auto flex items-center gap-4">

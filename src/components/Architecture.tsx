@@ -171,7 +171,7 @@ function PurposeBand() {
               Code review at machine speed — <span className="text-cyanx">verdicts you can defend.</span>
             </h2>
             <p className="pt-3 text-[13px] leading-relaxed text-ink-300">
-              Sentinel Crew closes the gap between "a PR was opened" and "someone competent looked at it for security
+              AI CoAudS closes the gap between "a PR was opened" and "someone competent looked at it for security
               and quality". It does the whole job — audit, corroborate, refactor, validate — and hands maintainers a
               structured review instead of another notification.
             </p>

@@ -173,7 +173,7 @@ function buildReview(findings: Finding[], files: ParsedFile[], shared: SharedSna
     : `Top priority: ${headline}. ${counts.high + counts.critical} high-or-critical item(s) should block the merge; suggested fixes are attached where a safe transformation exists.`;
 
   const lines: string[] = [
-    `## 🛡 Sentinel Crew Review — overall risk: **${overall.toUpperCase()}**`,
+    `## 🤖 AI CoAudS Review — overall risk: **${overall.toUpperCase()}**`,
     "",
     `**Files reviewed:** ${files.length} · **Issues:** ${total} · ` +
     `(${counts.critical} critical · ${counts.high} high · ${counts.medium} medium · ${counts.low} low · ${counts.info} info)`,
@@ -191,7 +191,7 @@ function buildReview(findings: Finding[], files: ParsedFile[], shared: SharedSna
     lines.push("");
   }
   if (ranked.length > 12) lines.push(`_…and ${ranked.length - 12} more finding(s) in the audit log._`, "");
-  lines.push("---", `_Posted by Sentinel Crew · deterministic rules + LLM audit · patches validated before posting_ ${postedNote}`);
+  lines.push("---", `_Posted by AI CoAudS · deterministic rules + LLM audit · patches validated before posting_ ${postedNote}`);
 
   const inline: InlineComment[] = ranked.slice(0, 10).map((f) => ({
     path: f.file,

@@ -71,7 +71,7 @@ export default function Codebase() {
       <header className="anim-rise panel flex flex-wrap items-end justify-between gap-3 px-5 py-4">
         <div>
           <p className="panel-head flex items-center gap-2"><CodeIcon className="h-3.5 w-3.5 text-emx" /> reference implementation</p>
-          <h2 className="font-display pt-1 text-[24px] font-bold tracking-wide text-ink-100">sentinel-crew / service</h2>
+          <h2 className="font-display pt-1 text-[24px] font-bold tracking-wide text-ink-100">ai-coauds / service</h2>
           <p className="max-w-2xl pt-1 text-[13px] leading-relaxed text-ink-300">
             The production-shaped Python codebase behind the console: FastAPI webhook server, CrewAI crew of five agents,
             Redis-backed shared state, deterministic SAST runners and the validation gate — containerized with Docker.
@@ -107,7 +107,7 @@ export default function Codebase() {
           </ul>
           <div className="border-t border-ink-700/60 p-3">
             <p className="font-mono text-[10px] leading-relaxed text-ink-500">
-              $ git clone github.com/acme/sentinel-crew<br />
+              $ git clone github.com/acme/ai-coauds<br />
               $ docker compose up --build<br />
               $ curl -X POST :8000/webhook …
             </p>

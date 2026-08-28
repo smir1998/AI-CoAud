@@ -1,4 +1,4 @@
-/* Sentinel Crew — deterministic analysis core.
+/* AI CoAudS — deterministic analysis core.
    Unified-diff parsing + a real Semgrep/Bandit-style rule engine.
    Everything here runs on actual code the user supplies — no scripted results. */
 
