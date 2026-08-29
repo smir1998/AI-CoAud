@@ -10,6 +10,18 @@ GitHub PR ──▶ webhook ──▶ orchestrator ──▶ security · style �
 
 ---
 
+## Live
+
+👉 **https://\<your-username\>.github.io/\<repo-name\>/**
+
+Deployed automatically on every push to `main` by
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — GitHub Pages, zero servers.
+The workflow builds with the correct subpath base and stamps the live URL into the console
+footer, so a deployed build is visibly different from a local one.
+
+> First time only: repo **Settings → Pages → Build and deployment → Source → GitHub Actions**.
+> The Actions run page then shows the live URL directly.
+
 ## Why it exists
 
 - Static scanners (Semgrep, Bandit, Ruff) flood reviewers with noise.

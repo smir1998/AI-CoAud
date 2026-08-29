@@ -79,16 +79,26 @@ Console on Cloudflare Pages / Netlify / Vercel (build `npm run build`,
 publish `dist/`); webhook on any container host. The console is fully
 client-side — it talks to `api.github.com` and the LLM providers directly.
 
-> **Build-context gotcha:** the web bundle inlines `backend/` and
-> `README.md` at build time via `?raw` imports (the in-app code browser).
-> Never exclude them from a Docker/CI build context — `.dockerignore`
-> already allows them, and they never reach the runtime image.
+> **Build-context gotcha:** the web bundle inlines `backend/`,
+> `.github/workflows/`, `deploy/` and `README.md` at build time via `?raw`
+> imports (the in-app code browser). Never exclude them from the root
+> `.dockerignore` — the `images` CI job asserts their presence before
+> invoking buildx, and none of them reach the runtime image.
 
-### D. GitHub Pages
+### D. GitHub Pages — automatic, already wired
 
-The console assumes it is served from a domain root. For a `/<repo>/` subpath,
-set `base: "/<repo>/"` in `vite.config.js`, rebuild, and publish `dist/`
-(e.g. via the `actions/deploy-pages` workflow).
+`.github/workflows/deploy.yml` deploys on every push to `main`:
+
+1. `npm ci && npm run build` with `VITE_BASE=/<repo>/` (subpath-safe assets)
+2. `configure-pages` → `upload-pages-artifact` (`dist/`) → `deploy-pages`
+3. Live at **https://\<username\>.github.io/\<repo\>/** — the run page shows the URL
+
+The build also receives `VITE_REPO_URL` and `VITE_DEPLOYED_URL`, which render as
+the "live · …" chip in the console footer — proof you're on the Pages build.
+
+One-time setup:
+- repo **Settings → Pages → Source → GitHub Actions**
+- nothing else — no secrets needed, permissions are declared in the workflow
 
 ## 4 — Secrets checklist
 

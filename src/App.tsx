@@ -3,7 +3,7 @@ import { CONFIG } from "./config";
 import Architecture from "./components/Architecture";
 import Codebase from "./components/Codebase";
 import Console from "./components/Console";
-import { ActivityIcon, BookIcon, CodeIcon, LogoIcon, MarkdownIcon, ShieldIcon, WebhookIcon } from "./components/icons";
+import { ActivityIcon, ArrowUpRightIcon, BookIcon, CodeIcon, GitHubIcon, LogoIcon, MarkdownIcon, ShieldIcon, WebhookIcon } from "./components/icons";
 import Readme from "./components/Readme";
 
 type View = "console" | "architecture" | "readme" | "codebase";
@@ -127,7 +127,21 @@ export default function App() {
             <span>github webhook → orchestrator → 3 parallel auditors → refactor → review → validation → PR comment</span>
             <span className="ml-auto flex items-center gap-4">
               <span>reference stack: crewai + fastapi + semgrep/bandit/ruff</span>
-              <span className="text-ink-600">real analysis in your browser · your keys never leave it</span>
+              {CONFIG.deploy.url ? (
+                <a
+                  href={CONFIG.deploy.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="this build was deployed to GitHub Pages by .github/workflows/deploy.yml"
+                  className="group flex items-center gap-1.5 rounded border border-orchid/35 bg-orchid/[0.06] px-2 py-0.5 text-orchid transition-all hover:border-orchid/70 hover:bg-orchid/[0.12] hover:shadow-[0_0_12px_-4px_rgba(56,189,248,0.7)]"
+                >
+                  <GitHubIcon className="h-3 w-3" />
+                  live · {CONFIG.deploy.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                  <ArrowUpRightIcon className="h-2.5 w-2.5 transition-transform group-hover:translate-x-px group-hover:-translate-y-px" />
+                </a>
+              ) : (
+                <span className="text-ink-600">real analysis in your browser · your keys never leave it</span>
+              )}
             </span>
           </div>
         </footer>

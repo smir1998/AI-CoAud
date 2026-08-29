@@ -43,6 +43,12 @@ export const CONFIG = {
     settings: "ai-coauds.settings.v1",
     readmeDraft: "ai-coauds.readme.draft.v1",
   },
+
+  // populated by .github/workflows/deploy.yml — empty in local/dev builds
+  deploy: {
+    url: env("VITE_DEPLOYED_URL", ""),
+    repo: env("VITE_REPO_URL", ""),
+  },
 } as const;
 
 export type AppConfig = typeof CONFIG;
