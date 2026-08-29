@@ -48,7 +48,7 @@ function Diagram() {
       <Edge d="M500 310 V 326 H 800 V 344" color="rgba(34,211,238,0.45)" />
 
       <Node x={110} y={348} w={180} title="Style Agent" sub="claude-sonnet-4 · smells" color="#f5a524" />
-      <Node x={410} y={348} w={180} title="Security Agent" sub="gpt-4o · taint / secrets" color="#f43f5e" />
+      <Node x={410} y={348} w={180} title="Security Panel ×5" sub="inj · key · acl · pkg · cry — parallel" color="#f43f5e" />
       <Node x={710} y={348} w={180} title="Static Tools" sub="semgrep · bandit · ruff" color="#22d3ee" />
 
       <Edge d="M200 394 V 412 H 500 V 430" color="rgba(245,165,36,0.45)" />
@@ -82,9 +82,34 @@ const ROSTER: Record<AgentId, { goal: string; tools: string[]; output: string }>
     output: "findings[] with file, line, severity, confidence",
   },
   security: {
-    goal: "Hunts injection sinks, insecure auth, hardcoded secrets, unsafe dependencies and missing input validation; correlates LLM hunches against SAST hits to kill false positives.",
-    tools: ["taint-map", "osv-advisories"],
-    output: "findings[] + tool corroboration links",
+    goal: "General bucket for deterministic hits that fall outside the five panel domains; the review agent folds them into the final verdict.",
+    tools: ["rule-engine"],
+    output: "unattributed rule findings",
+  },
+  inj: {
+    goal: "Traces attacker-controlled bytes into sinks — SQL built from strings, shell=True, eval/exec, template injection, XSS and log injection on the added lines.",
+    tools: ["taint-trace", "cwe-89/78/79/94"],
+    output: "injection findings · corroborates rule hits",
+  },
+  secret: {
+    goal: "Hunts credentials that must never ship: hardcoded passwords, API keys, AWS/Stripe key shapes, private key material, .env values committed inline.",
+    tools: ["entropy-scan", "cwe-798/321/522"],
+    output: "secret-exposure findings + redaction advice",
+  },
+  auth: {
+    goal: "Attacks the trust model: broken auth, missing authorization, IDOR, JWT 'none', session fixation, insecure cookies, exposed debug endpoints.",
+    tools: ["trust-model-map", "cwe-287/345/639"],
+    output: "access-control findings with exploit sketch",
+  },
+  supply: {
+    goal: "Audits what the code trusts: pickle/yaml deserialization, known-vulnerable or unpinned dependencies, typosquatting, abandoned packages in new code.",
+    tools: ["osv-advisories", "cwe-502/1104"],
+    output: "supply-chain findings + version guidance",
+  },
+  crypto: {
+    goal: "Grades the math and the wire: MD5/SHA1 for security purposes, Math.random tokens, disabled TLS verification, cleartext credentials, weak keys.",
+    tools: ["crypto-rubric", "cwe-327/330/295"],
+    output: "crypto findings + approved-algorithm swaps",
   },
   tools: {
     goal: "Runs deterministic checkers as a hallucination guardrail — only tool-confirmed or high-confidence LLM findings survive into the final review.",
@@ -103,7 +128,7 @@ const ROSTER: Record<AgentId, { goal: string; tools: string[]; output: string }>
   },
 };
 
-const AGENT_ORDER: AgentId[] = ["orchestrator", "style", "security", "tools", "refactor", "review"];
+const AGENT_ORDER: AgentId[] = ["orchestrator", "style", "tools", "inj", "secret", "auth", "supply", "crypto", "refactor", "review"];
 
 /* ── shared state schema ──────────────────────────────────── */
 

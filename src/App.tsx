@@ -154,7 +154,7 @@ export default function App() {
             <span className="flex items-center gap-1.5 text-ink-400">
               <ShieldIcon className="h-3.5 w-3.5 text-orchid" /> ai-coauds v{CONFIG.version}
             </span>
-            <span>github webhook → orchestrator → 3 parallel auditors → refactor → review → validation → PR comment</span>
+            <span>webhook → orchestrator → threat panel ×5 ∥ style ∥ sast → refactor → review → validation → PR comment</span>
             <span className="ml-auto flex items-center gap-4">
               <span>reference stack: crewai + fastapi + semgrep/bandit/ruff</span>
               {CONFIG.deploy.url ? (
