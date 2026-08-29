@@ -1,4 +1,7 @@
 # ── AI CoAudS webhook service ────────────────────────────
+# 3.12 (not 3.13): the pinned scanner set in requirements.txt — crewai 0.98,
+# semgrep 1.100 — is validated against this runtime. Bump both together once
+# the scanner ecosystem ships 3.13-verified wheels.
 FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \

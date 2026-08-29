@@ -1,3 +1,9 @@
+# ── AI CoAudS service ────────────────────────────────────
+# HARD-PINNED on purpose: the scanner ecosystem (semgrep, crewai) carries
+# volatile transitive pins, and open ranges let pip's resolver wander into
+# unsatisfiable combinations — which is exactly what broke CI. Bump
+# deliberately, one tool at a time, then re-verify `docker compose build api`.
+
 # ── service ──────────────────────────────────────────────
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
