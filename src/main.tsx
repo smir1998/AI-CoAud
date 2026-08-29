@@ -3,8 +3,10 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 
-// tell the inline boot watchdog in index.html that React is alive
-(window as unknown as { __coauds_mounted?: boolean }).__coauds_mounted = true;
+/* Boot-phase flags for the inline watchdog in index.html.
+ * "exec" lands the moment this module starts running — BEFORE any render —
+ * so the watchdog can distinguish "bundle never arrived" from "mounted". */
+(window as unknown as { __coauds_boot?: string }).__coauds_boot = "exec";
 
 /* Root-level fault isolation: catches anything that escapes App's own
  * ViewBoundary (e.g. a crash inside App's shell render) and renders a
@@ -58,3 +60,7 @@ ReactDOM.createRoot(container).render(
     <App />
   </RootBoundary>
 );
+
+/* render() commits synchronously — reaching this line means the tree is up.
+ * If it throws, the flag never lands and the watchdog reports the stall. */
+(window as unknown as { __coauds_mounted?: boolean }).__coauds_mounted = true;
