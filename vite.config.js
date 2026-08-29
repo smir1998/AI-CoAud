@@ -3,8 +3,10 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  // GitHub Pages serves from /<repo>/ — the deploy workflow sets VITE_BASE
-  base: process.env.VITE_BASE || "/",
+  // Document-relative by default so the bundle loads whether the app is
+  // served at a domain root, a preview subpath, or GitHub Pages (where the
+  // deploy workflow sets VITE_BASE=/<repo>/ explicitly).
+  base: process.env.VITE_BASE || "./",
   plugins: [react(), tailwindcss()],
   server: {
     host: "0.0.0.0",

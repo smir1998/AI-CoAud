@@ -12,10 +12,50 @@
     />
     <style>
       html, body, #root { margin: 0; width: 100%; min-height: 100%; background-color: #060b14; }
+      /* boot fallback — replaced the instant React mounts */
+      #boot-fallback {
+        min-height: 100vh; display: flex; align-items: center; justify-content: center;
+        font-family: "IBM Plex Mono", ui-monospace, monospace; color: #587099;
+      }
+      #boot-fallback .ring {
+        width: 34px; height: 34px; border-radius: 50%;
+        border: 2px solid #1a2a45; border-top-color: #38bdf8;
+        animation: bootspin 0.9s linear infinite; margin: 0 auto 14px;
+      }
+      #boot-fallback .card { text-align: center; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+      #boot-fallback.err .ring { display: none; }
+      #boot-fallback.err { color: #f87171; text-transform: none; letter-spacing: 0.02em; font-size: 12.5px; line-height: 1.7; max-width: 520px; padding: 24px; }
+      #boot-fallback.err b { color: #fca5a5; }
+      @keyframes bootspin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot-fallback">
+        <div class="card"><div class="ring"></div>booting audit console</div>
+      </div>
+    </div>
+    <script>
+      // If the bundle never mounts (blocked asset, stale cache, runtime fault),
+      // surface a diagnosis instead of a silent dark screen.
+      window.addEventListener("error", function (e) {
+        var el = document.getElementById("boot-fallback");
+        if (el && !window.__coauds_mounted) {
+          el.className = "err";
+          el.innerHTML = "<b>script fault:</b> " + (e.message || "unknown error") +
+            "<br><br>hard-refresh (Ctrl/Cmd+Shift+R) — the page may be holding a stale bundle.";
+        }
+      });
+      setTimeout(function () {
+        var el = document.getElementById("boot-fallback");
+        if (el && !window.__coauds_mounted) {
+          el.className = "err";
+          el.innerHTML = "<b>the console did not mount within 8s.</b><br><br>" +
+            "likely causes: a stale cached bundle, an asset blocked by the network, or a browser without ES2022 support." +
+            "<br><br>hard-refresh (Ctrl/Cmd+Shift+R) usually fixes it.";
+        }
+      }, 8000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
