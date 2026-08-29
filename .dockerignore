@@ -1,7 +1,11 @@
 # keep the web image build context lean and secret-free
+#
+# IMPORTANT: do NOT exclude backend/ or README.md —
+# src/data/codebase.ts inlines them via Vite ?raw imports, so the web
+# build fails to resolve them if they leave the context. They are only
+# bundled at build time; the runtime stage copies dist/ alone.
 node_modules
 dist
-backend
 .git
 .github
 .env
@@ -9,5 +13,3 @@ backend
 *.log
 docker-compose.yml
 DEPLOY.md
-
-# NOTE: README.md must stay — the console imports it via ?raw
