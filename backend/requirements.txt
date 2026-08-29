@@ -1,10 +1,23 @@
-# ── AI CoAudS service ────────────────────────────────────
-# HARD-PINNED on purpose: the scanner ecosystem (semgrep, crewai) carries
-# volatile transitive pins, and open ranges let pip's resolver wander into
-# unsatisfiable combinations — which is exactly what broke CI. Bump
-# deliberately, one tool at a time, then re-verify `docker compose build api`.
+# ── AI CoAudS service — Python 3.12 ──────────────────────────────────────
+# Version-ownership layout. The agent stack (crewai → litellm → openai /
+# anthropic / pydantic / httpx) owns a large transitive tree, and this file
+# must never fight it:
+#
+#   * crewai 0.98.0 pins litellm from the era that capped `httpx<0.28.0`
+#     (httpx 0.28 removed client kwargs that broke openai-python) — so any
+#     httpx FLOOR >= 0.28 makes the graph unsatisfiable. We declare httpx
+#     with an upper bound only; litellm picks the version that works.
+#   * litellm of that era also capped `pydantic<2.10` — so pydantic gets a
+#     floor at crewai's own minimum, never higher.
+#
+# Rule: for libraries shared with the agent tree, constrain only what would
+# break OUR code (major-version API changes) — never pin, never floor.
+#
+# Bump strategy: move ONE anchor at a time, then verify:
+#   docker compose build api && docker compose up api
+# (want httpx 0.28+? bump crewai to a release whose litellm is >= 1.59)
 
-# ── service ──────────────────────────────────────────────
+# ── core service (hard pins — no overlap with the agent tree) ────────────
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 httpx==0.28.1
@@ -17,7 +30,7 @@ tenacity==9.0.0
 crewai==1.15.18
 anthropic==0.42.0
 
-# ── deterministic scanners (also used to validate patches)
+# ── deterministic scanners (pinned — independent, self-contained wheels) ─
 semgrep==1.100.0
 bandit==1.8.0
 ruff==0.8.6
