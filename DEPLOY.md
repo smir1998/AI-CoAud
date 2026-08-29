@@ -79,10 +79,11 @@ Console on Cloudflare Pages / Netlify / Vercel (build `npm run build`,
 publish `dist/`); webhook on any container host. The console is fully
 client-side — it talks to `api.github.com` and the LLM providers directly.
 
-> **Build-context gotcha:** the web bundle inlines `backend/` and
-> `README.md` at build time via `?raw` imports (the in-app code browser).
-> Never exclude them from a Docker/CI build context — `.dockerignore`
-> already allows them, and they never reach the runtime image.
+> **Build-context gotcha:** the web bundle inlines `backend/`,
+> `.github/workflows/`, `deploy/` and `README.md` at build time via `?raw`
+> imports (the in-app code browser). Never exclude them from the root
+> `.dockerignore` — the `images` CI job asserts their presence before
+> invoking buildx, and none of them reach the runtime image.
 
 ### D. GitHub Pages — automatic, already wired
 
