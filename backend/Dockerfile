@@ -1,5 +1,5 @@
 # ── AI CoAudS webhook service ────────────────────────────
-# 3.12 (not 3.13): the pinned scanner set in requirements.txt — crewai 0.98,
+# 3.12 (not 3.13): the pinned scanner set in requirements.txt — crewai 0.99,
 # semgrep 1.100 — is validated against this runtime. Bump both together once
 # the scanner ecosystem ships 3.13-verified wheels.
 FROM python:3.12-slim AS base
@@ -13,6 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Upgrade pip to latest version before installing dependencies
+RUN pip install --upgrade pip
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
