@@ -84,11 +84,20 @@ client-side — it talks to `api.github.com` and the LLM providers directly.
 > Never exclude them from a Docker/CI build context — `.dockerignore`
 > already allows them, and they never reach the runtime image.
 
-### D. GitHub Pages
+### D. GitHub Pages — automatic, already wired
 
-The console assumes it is served from a domain root. For a `/<repo>/` subpath,
-set `base: "/<repo>/"` in `vite.config.js`, rebuild, and publish `dist/`
-(e.g. via the `actions/deploy-pages` workflow).
+`.github/workflows/deploy.yml` deploys on every push to `main`:
+
+1. `npm ci && npm run build` with `VITE_BASE=/<repo>/` (subpath-safe assets)
+2. `configure-pages` → `upload-pages-artifact` (`dist/`) → `deploy-pages`
+3. Live at **https://\<username\>.github.io/\<repo\>/** — the run page shows the URL
+
+The build also receives `VITE_REPO_URL` and `VITE_DEPLOYED_URL`, which render as
+the "live · …" chip in the console footer — proof you're on the Pages build.
+
+One-time setup:
+- repo **Settings → Pages → Source → GitHub Actions**
+- nothing else — no secrets needed, permissions are declared in the workflow
 
 ## 4 — Secrets checklist
 

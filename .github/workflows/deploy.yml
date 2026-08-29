@@ -1,0 +1,55 @@
+# Deploys the audit console to GitHub Pages on every push to main.
+# One-time setup: repo Settings → Pages → Source → "GitHub Actions".
+# The run page shows the live URL via the github-pages environment.
+name: deploy-pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  BUILDKIT_PROGRESS: plain
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: build
+        run: npm run build
+        env:
+          # Pages serves from a subpath — assets must be rooted there
+          VITE_BASE: /${{ github.event.repository.name }}/
+          # surfaces as the "live" chip in the deployed console header
+          VITE_REPO_URL: https://github.com/${{ github.repository }}
+          VITE_DEPLOYED_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
