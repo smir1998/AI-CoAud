@@ -1,24 +1,33 @@
 # ── AI CoAudS service — Python 3.12 ──────────────────────────────────────
-# The layout is deliberate. The agent stack (crewai) owns a large
-# transitive tree (litellm → openai / anthropic / pydantic). Hard-pinning
-# anything inside that tree creates unsatisfiable graphs — so those
-# libraries are range-bounded and crewai's resolver chooses the versions.
-# The backend imports pydantic + httpx directly but NOT anthropic, so
-# only those two get loose floors; everything crewai owns stays unpinned.
+# Version-ownership layout. The agent stack (crewai → litellm → openai /
+# anthropic / pydantic / httpx) owns a large transitive tree, and this file
+# must never fight it:
+#
+#   * crewai 0.98.0 pins litellm from the era that capped `httpx<0.28.0`
+#     (httpx 0.28 removed client kwargs that broke openai-python) — so any
+#     httpx FLOOR >= 0.28 makes the graph unsatisfiable. We declare httpx
+#     with an upper bound only; litellm picks the version that works.
+#   * litellm of that era also capped `pydantic<2.10` — so pydantic gets a
+#     floor at crewai's own minimum, never higher.
+#
+# Rule: for libraries shared with the agent tree, constrain only what would
+# break OUR code (major-version API changes) — never pin, never floor.
 #
 # Bump strategy: move ONE anchor at a time, then verify:
 #   docker compose build api && docker compose up api
+# (want httpx 0.28+? bump crewai to a release whose litellm is >= 1.59)
 
 # ── core service (hard pins — no overlap with the agent tree) ────────────
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 redis==5.2.1
 tenacity==9.0.0
-pydantic-settings==2.7.1
 
 # ── resolver-owned (the agent stack dictates compatible versions) ────────
-pydantic>=2.9,<3.0
-httpx>=0.28,<1.0
+# backend imports both directly, but the tree must own the floor
+pydantic>=2.4,<3.0
+pydantic-settings>=2.1,<3.0
+httpx<1.0
 
 # ── agent stack (single anchor — its whole tree resolves freely) ─────────
 crewai==0.98.0
