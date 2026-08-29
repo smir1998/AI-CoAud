@@ -1,5 +1,5 @@
 # ── AI CoAudS webhook service ────────────────────────────
-FROM python:3.12-slim AS base
+FROM python:3.13-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
