@@ -44,13 +44,17 @@ jobs:
         run: |
           pip install "ruff>=0.9,<1.0"
           ruff check backend --select E9,F --no-fix
-      - name: test dependency resolution
+      - name: resolve-check requirements
+        # full dependency resolution without installing — a broken graph
+        # fails HERE with pip's complete log, not inside an opaque buildx run.
+        # The manifest is echoed first so the log proves WHICH file resolved.
         run: |
-          python -m venv /tmp/test-env
-          source /tmp/test-env/bin/activate
-          pip install --upgrade pip setuptools wheel
-          pip install -r backend/requirements.txt --dry-run
-          echo "✓ Dependency resolution successful"
+          python -m pip install --upgrade pip
+          echo "── manifest under test (backend/requirements.txt @ $(git rev-parse --short HEAD)) ──"
+          cat backend/requirements.txt
+          echo "──────────────────────────────────────────────────────"
+          pip --version
+          pip install --dry-run -r backend/requirements.txt
 
   images:
     needs: [web, backend]
