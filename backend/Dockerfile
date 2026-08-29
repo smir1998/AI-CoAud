@@ -1,22 +1,31 @@
 # ── AI CoAudS webhook service ────────────────────────────
-# 3.12 (not 3.13): the pinned scanner set in requirements.txt — crewai 0.98,
+# 3.12 (not 3.13): the pinned scanner set in requirements.txt — crewai 1.15.18,
 # semgrep 1.100 — is validated against this runtime. Bump both together once
 # the scanner ecosystem ships 3.13-verified wheels.
 FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH
 
 # git needed by pip-audit/vcs checks; kept minimal otherwise
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Create and activate virtual environment
+RUN python -m venv /opt/venv
+
+# Upgrade pip, setuptools, and wheel in the venv for best dependency resolution
+RUN pip install --upgrade pip setuptools wheel
+
 COPY requirements.txt .
-# current pip: better resolver, better error messages on conflicts
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install dependencies in the venv with verbose output for debugging
+RUN pip install -r requirements.txt
 
 COPY . .
 

@@ -20,17 +20,15 @@
 # ── core service (hard pins — no overlap with the agent tree) ────────────
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+httpx==0.28.1
+pydantic==2.11.9
+pydantic-settings==2.11.0
 redis==5.2.1
 tenacity==9.0.0
 
-# ── resolver-owned (the agent stack dictates compatible versions) ────────
-# backend imports both directly, but the tree must own the floor
-pydantic>=2.4,<3.0
-pydantic-settings>=2.1,<3.0
-httpx<1.0
-
-# ── agent stack (single anchor — its whole tree resolves freely) ─────────
-crewai==0.98.0
+# ── agents / LLM ─────────────────────────────────────────
+crewai==1.15.18
+anthropic==0.42.0
 
 # ── deterministic scanners (pinned — independent, self-contained wheels) ─
 semgrep==1.100.0
