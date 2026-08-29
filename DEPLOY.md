@@ -114,6 +114,8 @@ and stores them in the browser only.
 
 ## 5 — Operations
 
+- Dependency conflicts surface in CI's `resolve-check requirements` step
+  (full pip log) before any image build — bump one anchor at a time
 - `GET /health` → redis status, queue depth, worker count
 - `GET /audits` → last 20 runs · `GET /audits/{id}` → full state log
 - Bump `WORKERS`/`MAX_QUEUE` to trade LLM spend vs. latency

@@ -1,23 +1,29 @@
-# ── AI CoAudS service ────────────────────────────────────
-# HARD-PINNED on purpose: the scanner ecosystem (semgrep, crewai) carries
-# volatile transitive pins, and open ranges let pip's resolver wander into
-# unsatisfiable combinations — which is exactly what broke CI. Bump
-# deliberately, one tool at a time, then re-verify `docker compose build api`.
+# ── AI CoAudS service — Python 3.12 ──────────────────────────────────────
+# The layout is deliberate. The agent stack (crewai) owns a large
+# transitive tree (litellm → openai / anthropic / pydantic). Hard-pinning
+# anything inside that tree creates unsatisfiable graphs — so those
+# libraries are range-bounded and crewai's resolver chooses the versions.
+# The backend imports pydantic + httpx directly but NOT anthropic, so
+# only those two get loose floors; everything crewai owns stays unpinned.
+#
+# Bump strategy: move ONE anchor at a time, then verify:
+#   docker compose build api && docker compose up api
 
-# ── service ──────────────────────────────────────────────
+# ── core service (hard pins — no overlap with the agent tree) ────────────
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-httpx==0.28.1
-pydantic==2.10.4
-pydantic-settings==2.7.1
 redis==5.2.1
 tenacity==9.0.0
+pydantic-settings==2.7.1
 
-# ── agents / LLM ─────────────────────────────────────────
+# ── resolver-owned (the agent stack dictates compatible versions) ────────
+pydantic>=2.9,<3.0
+httpx>=0.28,<1.0
+
+# ── agent stack (single anchor — its whole tree resolves freely) ─────────
 crewai==0.98.0
-anthropic==0.42.0
 
-# ── deterministic scanners (also used to validate patches)
+# ── deterministic scanners (pinned — independent, self-contained wheels) ─
 semgrep==1.100.0
 bandit==1.8.0
 ruff==0.8.6

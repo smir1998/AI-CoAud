@@ -14,7 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+# current pip: better resolver, better error messages on conflicts
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
