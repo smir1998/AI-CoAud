@@ -1,28 +1,15 @@
-import { Component, Suspense, lazy, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, useState, type ErrorInfo, type ReactNode } from "react";
 import { CONFIG } from "./config";
+import Architecture from "./components/Architecture";
+import Codebase from "./components/Codebase";
 import Console from "./components/Console";
+import Readme from "./components/Readme";
 import { ActivityIcon, ArrowUpRightIcon, BookIcon, CodeIcon, GitHubIcon, LogoIcon, MarkdownIcon, ShieldIcon, WebhookIcon } from "./components/icons";
 
-/* The three non-initial views are heavy (Architecture's SVG diagram, the
- * README studio + markdown engine, Codebase's embedded source files).
- * Loading them lazily keeps the first paint fast — the live console mounts
- * without waiting for any of them. */
-const Architecture = lazy(() => import("./components/Architecture"));
-const Codebase = lazy(() => import("./components/Codebase"));
-const Readme = lazy(() => import("./components/Readme"));
-
-function ViewLoading({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-[50vh] items-center justify-center">
-      <div className="panel flex flex-col items-center gap-3 px-10 py-8">
-        <span className="h-7 w-7 animate-spin rounded-full border-2 border-ink-700 border-t-orchid" />
-        <span className="font-mono text-[11px] tracking-[0.14em] text-ink-400 uppercase">
-          loading {label}
-        </span>
-      </div>
-    </div>
-  );
-}
+/* Views are imported EAGERLY, never via React.lazy: the production build
+ * inlines the whole app into one HTML file, so code-split chunks would add
+ * zero benefit there — and in the proxied dev-preview the dynamic module
+ * fetches ("/src/components/…") fail outright. One bundle, always. */
 
 type View = "console" | "architecture" | "readme" | "codebase";
 
@@ -129,21 +116,9 @@ export default function App() {
           <ViewBoundary key={view} onReset={() => setView("console")}>
             <div key={view} className="anim-rise">
               {view === "console" && <Console />}
-              {view === "architecture" && (
-                <Suspense fallback={<ViewLoading label="architecture" />}>
-                  <Architecture />
-                </Suspense>
-              )}
-              {view === "readme" && (
-                <Suspense fallback={<ViewLoading label="readme studio" />}>
-                  <Readme />
-                </Suspense>
-              )}
-              {view === "codebase" && (
-                <Suspense fallback={<ViewLoading label="implementation" />}>
-                  <Codebase />
-                </Suspense>
-              )}
+              {view === "architecture" && <Architecture />}
+              {view === "readme" && <Readme />}
+              {view === "codebase" && <Codebase />}
             </div>
           </ViewBoundary>
         </main>
