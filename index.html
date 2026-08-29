@@ -23,39 +23,90 @@
         animation: bootspin 0.9s linear infinite; margin: 0 auto 14px;
       }
       #boot-fallback .card { text-align: center; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+      #boot-fallback .note {
+        margin-top: 12px; font-size: 10.5px; letter-spacing: 0.02em; text-transform: none;
+        color: #f5a524; min-height: 15px; transition: color .3s ease;
+      }
+      #boot-fallback.err { color: #f87171; text-transform: none; letter-spacing: 0.02em; font-size: 12.5px; line-height: 1.7; max-width: 540px; padding: 24px; }
       #boot-fallback.err .ring { display: none; }
-      #boot-fallback.err { color: #f87171; text-transform: none; letter-spacing: 0.02em; font-size: 12.5px; line-height: 1.7; max-width: 520px; padding: 24px; }
       #boot-fallback.err b { color: #fca5a5; }
+      #boot-fallback.err .phase { color: #587099; font-size: 10.5px; margin-top: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
       @keyframes bootspin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
     <div id="root">
       <div id="boot-fallback">
-        <div class="card"><div class="ring"></div>booting audit console</div>
+        <div class="card">
+          <div class="ring"></div>
+          booting audit console
+          <div class="note" id="boot-note"></div>
+        </div>
       </div>
     </div>
     <script>
-      // If the bundle never mounts (blocked asset, stale cache, runtime fault),
-      // surface a diagnosis instead of a silent dark screen.
-      window.addEventListener("error", function (e) {
-        var el = document.getElementById("boot-fallback");
-        if (el && !window.__coauds_mounted) {
-          el.className = "err";
-          el.innerHTML = "<b>script fault:</b> " + (e.message || "unknown error") +
-            "<br><br>hard-refresh (Ctrl/Cmd+Shift+R) — the page may be holding a stale bundle.";
+      /* Progressive boot watchdog. Boot phases:
+       *   html   — this page parsed (set below)
+       *   exec   — the bundle started executing (set by main.tsx)
+       *   mounted— React committed the tree (set by main.tsx)
+       * At 8s we only WARN (first dev-server compiles routinely exceed it);
+       * the hard diagnosis card appears at 30s. Nothing fails silently. */
+      window.__coauds_boot = "html";
+      (function () {
+        var fb = document.getElementById("boot-fallback");
+        var note = document.getElementById("boot-note");
+        var done = function () { return window.__coauds_mounted === true; };
+
+        function fail(title, detail) {
+          if (!fb || done()) return;
+          fb.className = "err";
+          fb.innerHTML =
+            "<b>" + title + "</b><br><br>" + detail +
+            '<div class="phase">boot phase reached: ' + (window.__coauds_boot || "html") +
+            (window.__coauds_mounted ? " · mounted" : "") + "</div>";
         }
-      });
-      setTimeout(function () {
-        var el = document.getElementById("boot-fallback");
-        if (el && !window.__coauds_mounted) {
-          el.className = "err";
-          el.innerHTML = "<b>the console did not mount within 8s.</b><br><br>" +
-            "likely causes: a stale cached bundle, an asset blocked by the network, or a browser without ES2022 support." +
-            "<br><br>hard-refresh (Ctrl/Cmd+Shift+R) usually fixes it.";
+
+        /* a fetch/parse failure of the entry module itself */
+        var tag = document.getElementById("app-module");
+        if (tag) {
+          tag.addEventListener("error", function () {
+            fail("the bundle failed to load",
+              "The module script never arrived (404 or blocked by the network). " +
+              "Hard-refresh (Ctrl/Cmd+Shift+R) — the page is likely holding a stale asset map.");
+          });
         }
-      }, 8000);
+
+        /* a synchronous throw while the bundle executes */
+        window.addEventListener("error", function (e) {
+          if (!done() && window.__coauds_boot === "exec") {
+            fail("script fault while booting", e.message || "unknown error");
+          }
+        });
+
+        setTimeout(function () {
+          if (done() || !note) return;
+          if (window.__coauds_boot === "html") {
+            note.textContent = "still downloading the bundle — first dev-server compile can take a while…";
+          } else {
+            note.textContent = "bundle executing — mounting React…";
+          }
+        }, 8000);
+
+        setTimeout(function () {
+          if (done()) return;
+          if (window.__coauds_boot === "html") {
+            fail("the console never started",
+              "The bundle did not begin executing within 30s. Likely a very slow network, " +
+              "a cold dev server still compiling, or an asset blocked upstream. " +
+              "Hard-refresh (Ctrl/Cmd+Shift+R); in development, give the dev server a moment and reload.");
+          } else {
+            fail("the console stalled while mounting",
+              "The bundle executed but React never committed. Check the browser console for the fault; " +
+              "a hard refresh (Ctrl/Cmd+Shift+R) clears stale bundles.");
+          }
+        }, 30000);
+      })();
     </script>
-    <script type="module" src="/src/main.tsx"></script>
+    <script id="app-module" type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,8 +1,12 @@
 # ── AI CoAudS webhook service ────────────────────────────
-# 3.12 (not 3.13): the pinned scanner set in requirements.txt — crewai 1.15.18,
-# semgrep 1.100 — is validated against this runtime. Bump both together once
-# the scanner ecosystem ships 3.13-verified wheels.
+# Python 3.12: crewai 1.15.18 declares requires-python >=3.10,<3.14
+# (verified in its pyproject) — 3.12 is the max-wheel-coverage default;
+# 3.13 is supported too. Bump deliberately: scripts/check-deps.sh first.
+#
+# Mirrored / air-gapped pip index? pass it at build time:
+#   docker build --build-arg PIP_INDEX_URL=https://pypi.org/simple ...
 FROM python:3.12-slim AS base
+ARG PIP_INDEX_URL
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

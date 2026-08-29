@@ -1,34 +1,40 @@
 # ── AI CoAudS service — Python 3.12 ──────────────────────────────────────
-# Version-ownership layout. The agent stack (crewai → litellm → openai /
-# anthropic / pydantic / httpx) owns a large transitive tree, and this file
-# must never fight it:
+# Version-ownership layout. THIS FILE IS LOAD-BEARING — two agents have
+# rewritten it into conflicting shapes before; read the rules before editing.
 #
-#   * crewai 0.98.0 pins litellm from the era that capped `httpx<0.28.0`
-#     (httpx 0.28 removed client kwargs that broke openai-python) — so any
-#     httpx FLOOR >= 0.28 makes the graph unsatisfiable. We declare httpx
-#     with an upper bound only; litellm picks the version that works.
-#   * litellm of that era also capped `pydantic<2.10` — so pydantic gets a
-#     floor at crewai's own minimum, never higher.
+# The agent stack (crewai → litellm → openai / anthropic / pydantic / httpx)
+# owns a large transitive tree. Verified constraints of crewai 1.15.18
+# (from its pyproject):
+#   * pydantic-settings >=2.14.2,<3   ← ALSO the GHSA-4xgf-cpjx-pc3j floor
+#   * langchain-core    >=1.3.3,<2    (security floors — do not fight them)
+#   * openai            >=2.30.0,<3
+#   * requires-python   >=3.10,<3.14
+# The 1.x tree no longer caps httpx<0.28 (that was litellm <1.59, crewai 0.98
+# era) — so httpx needs an upper bound only.
 #
 # Rule: for libraries shared with the agent tree, constrain only what would
-# break OUR code (major-version API changes) — never pin, never floor.
+# break OUR code (major-version API changes) — never pin, and never floor
+# ABOVE crewai's own floors. Reproducibility comes from a lockfile
+# (pip freeze > requirements.lock after a clean resolve), not from this file.
 #
-# Bump strategy: move ONE anchor at a time, then verify:
-#   docker compose build api && docker compose up api
-# (want httpx 0.28+? bump crewai to a release whose litellm is >= 1.59)
+# Bump strategy: move ONE anchor at a time, then verify BEFORE pushing:
+#   bash scripts/check-deps.sh && docker compose build api
 
 # ── core service (hard pins — no overlap with the agent tree) ────────────
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-httpx==0.28.1
-pydantic==2.11.9
-pydantic-settings==2.11.0
 redis==5.2.1
-tenacity==9.0.0
 
-# ── agents / LLM ─────────────────────────────────────────
+# ── shared with the agent tree (crewai's floors win; we cap majors only) ──
+httpx<1.0
+pydantic>=2.11,<3.0
+pydantic-settings>=2.14.2,<3.0
+tenacity>=8.2,<10.0
+
+# ── agent stack (single anchor — its whole tree resolves freely) ─────────
+# NOTE: anthropic/openai are owned by litellm inside this tree. The backend
+# imports neither directly — pinning them here caused three CI failures.
 crewai==1.15.18
-anthropic==0.42.0
 
 # ── deterministic scanners (pinned — independent, self-contained wheels) ─
 semgrep==1.100.0

@@ -115,7 +115,11 @@ and stores them in the browser only.
 ## 5 — Operations
 
 - Dependency conflicts surface in CI's `resolve-check requirements` step
-  (full pip log) before any image build — bump one anchor at a time
+  (full pip log, manifest echoed) before any image build — bump one anchor
+  at a time, and run `bash scripts/check-deps.sh` before pushing
+- pip says "no matching distributions available for your environment"?
+  your index/mirror lacks the release — override it:
+  `docker build --build-arg PIP_INDEX_URL=https://pypi.org/simple ...`
 - `GET /health` → redis status, queue depth, worker count
 - `GET /audits` → last 20 runs · `GET /audits/{id}` → full state log
 - Bump `WORKERS`/`MAX_QUEUE` to trade LLM spend vs. latency

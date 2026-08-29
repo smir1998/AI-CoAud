@@ -34,26 +34,54 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # provenance step diffs against origin/main
       - uses: actions/setup-python@v5
         with:
           # match the runtime in backend/Dockerfile
           python-version: "3.12"
+
+      - name: backend provenance
+        # This repo has two automated committers; failures were repeatedly
+        # caused by a stale manifest winning a merge. This step puts the
+        # answer to "which tree actually ran?" at the TOP of every log.
+        run: |
+          echo "── head ──"
+          git log --oneline -1
+          echo "── last 5 commits touching backend/ or ci.yml ──"
+          git log --oneline -5 -- backend/ .github/workflows/ci.yml
+          if git rev-parse --verify origin/main >/dev/null 2>&1 \
+             && [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "── backend/ diff vs origin/main ──"
+            git diff --stat origin/main...HEAD -- backend/ || true
+          fi
+          echo "── manifest fingerprint ──"
+          sha256sum backend/requirements.txt
+
       - name: syntax gate
         run: python -m compileall -q backend
+
       - name: lint
         run: |
           pip install "ruff>=0.9,<1.0"
           ruff check backend --select E9,F --no-fix
+
       - name: resolve-check requirements
         # full dependency resolution without installing — a broken graph
         # fails HERE with pip's complete log, not inside an opaque buildx run.
         # The manifest is echoed first so the log proves WHICH file resolved.
+        # Resolution defaults to PyPI: an org mirror missing recent releases
+        # ("no matching distributions available") has broken this step before;
+        # override with a repository variable if you must use a mirror.
+        env:
+          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
         run: |
           python -m pip install --upgrade pip
           echo "── manifest under test (backend/requirements.txt @ $(git rev-parse --short HEAD)) ──"
           cat backend/requirements.txt
           echo "──────────────────────────────────────────────────────"
           pip --version
+          echo "index: $PIP_INDEX_URL"
           pip install --dry-run -r backend/requirements.txt
 
   images:
