@@ -40,6 +40,15 @@ function inlineIntoHtml() {
         return doc.slice(0, start) + `<style>${css}</style>` + doc.slice(end);
       };
 
+      /* Tripwire: more than one JS chunk means a runtime import() survived
+       * (someone re-added React.lazy or a manual dynamic import). In a
+       * single-file build that second chunk would 404 at runtime, so fail
+       * the build loudly instead of shipping a broken artifact. */
+      const jsChunks = Object.keys(bundle).filter((n) => bundle[n].type === "chunk" && n.endsWith(".js"));
+      if (jsChunks.length > 1) {
+        this.error(`single-file build violated: ${jsChunks.length} JS chunks emitted (${jsChunks.join(", ")}). Remove dynamic imports or disable inlineIntoHtml().`);
+      }
+
       for (const [name, item] of Object.entries(bundle)) {
         if (item.type === "chunk" && name.endsWith(".js")) {
           // neutralise any literal "</script>" inside the code itself
@@ -73,5 +82,13 @@ export default defineConfig({
     hmr: {
       port: 3000,
     },
+    /* Preview environments proxy the dev server through external hostnames
+     * (e.g. *.preview.qwenlm.io). Vite ≥6.1 rejects unknown Host headers by
+     * default (DNS-rebinding protection), which 403s every module request —
+     * surfacing as "Failed to fetch dynamically imported module". Allow all
+     * hosts here: this server is a sandboxed dev preview, not production. */
+    allowedHosts: true,
+    // serve pre-transformed deps + friendlier errors through the proxy
+    cors: true,
   },
 });
