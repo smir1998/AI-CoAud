@@ -1,24 +1,24 @@
-# ── AI CoAudS service — Python 3.13 ──────────────────────
-# Floor-pinned ranges: image builds resolve to the newest compatible
-# release, so modules stay current without manual churn. For a
-# byte-reproducible production image, generate a lock:
-#   pip install -r requirements.txt && pip freeze > requirements.lock
+# ── AI CoAudS service ────────────────────────────────────
+# HARD-PINNED on purpose: the scanner ecosystem (semgrep, crewai) carries
+# volatile transitive pins, and open ranges let pip's resolver wander into
+# unsatisfiable combinations — which is exactly what broke CI. Bump
+# deliberately, one tool at a time, then re-verify `docker compose build api`.
 
 # ── service ──────────────────────────────────────────────
-fastapi>=0.115,<1.0
-uvicorn[standard]>=0.34,<1.0
-httpx>=0.28,<1.0
-pydantic>=2.10,<3.0
-pydantic-settings>=2.7,<3.0
-redis>=5.2,<7.0
-tenacity>=9.0,<10.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pydantic==2.10.4
+pydantic-settings==2.7.1
+redis==5.2.1
+tenacity==9.0.0
 
 # ── agents / LLM ─────────────────────────────────────────
-crewai>=0.98,<1.0
-anthropic>=0.42,<1.0
+crewai==0.98.0
+anthropic==0.42.0
 
 # ── deterministic scanners (also used to validate patches)
-semgrep>=1.100,<2.0
-bandit>=1.8,<2.0
-ruff>=0.9,<1.0
-pip-audit>=2.7,<3.0
+semgrep==1.100.0
+bandit==1.8.0
+ruff==0.8.6
+pip-audit==2.7.3

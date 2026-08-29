@@ -284,7 +284,7 @@ export default function Architecture() {
         <div className="flex gap-2 font-mono text-[10.5px] text-ink-400">
           <span className="chip border-ink-600 text-ink-300">crewai 0.80</span>
           <span className="chip border-ink-600 text-ink-300">fastapi 0.115</span>
-          <span className="chip border-ink-600 text-ink-300">python 3.13</span>
+          <span className="chip border-ink-600 text-ink-300">python 3.12</span>
         </div>
       </header>
 

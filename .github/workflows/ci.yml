@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - name: typecheck
         run: npx tsc --noEmit
       - name: build
@@ -36,7 +36,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # match the runtime in backend/Dockerfile
+          python-version: "3.12"
       - name: syntax gate
         run: python -m compileall -q backend
       - name: lint
