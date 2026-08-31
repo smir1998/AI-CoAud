@@ -1,6 +1,66 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+
+/* Preview rescue — the proxied dev server is the weakest link.
+ *
+ * Sandbox preview hosts (*.preview.…) sit behind a proxy that frequently
+ * cannot complete Vite's on-the-fly module transforms (cold esbuild
+ * compiles stall past the 30s boot watchdog → "boot phase reached: html").
+ * When the request comes from a NON-local Host header AND a production
+ * build exists, serve the self-contained dist/index.html instead of the
+ * dev pipeline. The single file has zero secondary fetches, so it cannot
+ * stall. Localhost keeps the genuine dev server (HMR, sources, maps).
+ */
+let ensured = false;
+
+function previewServesBuiltFile() {
+  const LOCAL_HOSTS = new Set(["", "localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+  return {
+    name: "coauds-preview-static",
+    apply: "serve",
+    buildStart() {
+      /* Fresh sandbox: no dist yet → the rescue below would have nothing
+       * to serve. Kick off a one-shot production build in the background
+       * so the single file materializes within seconds of dev startup. */
+      if (ensured) return;
+      ensured = true;
+      const distIndex = path.join(process.cwd(), "dist", "index.html");
+      if (!fs.existsSync(distIndex)) {
+        console.log("[coauds] dist/ missing — building the single-file bundle in the background…");
+        const child = spawn("npm", ["run", "build"], {
+          cwd: process.cwd(),
+          stdio: "ignore",
+          detached: true,
+          shell: process.platform === "win32",
+        });
+        child.unref();
+      }
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+        if (LOCAL_HOSTS.has(host)) return next();
+        const url = (req.url || "").split("?")[0];
+        if (url === "/" || url === "/index.html") {
+          const distIndex = path.join(process.cwd(), "dist", "index.html");
+          if (fs.existsSync(distIndex)) {
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.setHeader("Cache-Control", "no-store");
+            res.setHeader("X-CoAudS-Served-By", "dist/index.html (single-file)");
+            res.end(fs.readFileSync(distIndex));
+            return;
+          }
+        }
+        next();
+      });
+    },
+  };
+}
 
 /* Self-contained build.
  *
@@ -69,7 +129,7 @@ function inlineIntoHtml() {
 export default defineConfig({
   // irrelevant once inlined, but keeps non-single-file fallbacks correct
   base: process.env.VITE_BASE || "./",
-  plugins: [react(), tailwindcss(), inlineIntoHtml()],
+  plugins: [previewServesBuiltFile(), react(), tailwindcss(), inlineIntoHtml()],
   build: {
     modulePreload: false,
     cssCodeSplit: false,
