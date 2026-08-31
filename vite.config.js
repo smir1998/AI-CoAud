@@ -15,48 +15,109 @@ import { spawn } from "node:child_process";
  * dev pipeline. The single file has zero secondary fetches, so it cannot
  * stall. Localhost keeps the genuine dev server (HMR, sources, maps).
  */
-let ensured = false;
+/* Proxy-aware dev rescue.
+ *
+ * This sandbox previews the app by proxying Vite's DEV server, and that
+ * proxy cannot complete the on-demand module transforms — the HTML arrives
+ * but every /src/*.js request stalls, so the page hangs at the boot
+ * spinner and the watchdog eventually reports "phase: html".
+ *
+ * The fix: any request whose Host is NOT localhost bypasses the dev
+ * pipeline entirely and gets the self-contained production bundle
+ * (dist/index.html, everything inlined). The real HMR dev loop is
+ * untouched for localhost.
+ *
+ * dist/ may not exist on a fresh boot, so the plugin builds it once with
+ * full completion tracking and a tiny state machine:
+ *   ready    → serve dist/index.html for every path (SPA-style)
+ *   building → serve an auto-refresh page (browser polls until done)
+ *   failed   → rebuild on next request + error page with a retry link
+ */
+let buildState = "ready"; // "ready" | "building" | "failed"
+let buildPromise = null;
 
 function previewServesBuiltFile() {
   const LOCAL_HOSTS = new Set(["", "localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+  const distIndex = () => path.join(process.cwd(), "dist", "index.html");
+
+  const ensureBuilt = () => {
+    if (fs.existsSync(distIndex())) {
+      buildState = "ready";
+      return Promise.resolve();
+    }
+    if (buildPromise) return buildPromise;
+    buildState = "building";
+    console.log("[coauds] dist/index.html missing — building single-file bundle…");
+    buildPromise = new Promise((resolve) => {
+      const child = spawn("npm", ["run", "build"], {
+        cwd: process.cwd(),
+        stdio: "inherit",
+        shell: process.platform === "win32",
+      });
+      const finish = (ok, detail) => {
+        buildState = ok ? "ready" : "failed";
+        buildPromise = null;
+        console.log(ok
+          ? "[coauds] single-file bundle ready — proxied previews served statically"
+          : `[coauds] build failed (${detail}) — will retry on next request`);
+        resolve();
+      };
+      child.on("close", (code) => finish(code === 0 && fs.existsSync(distIndex()), `exit ${code}`));
+      child.on("error", (err) => finish(false, err.message));
+    });
+    return buildPromise;
+  };
+
   return {
     name: "coauds-preview-static",
     apply: "serve",
-    buildStart() {
-      /* Fresh sandbox: no dist yet → the rescue below would have nothing
-       * to serve. Kick off a one-shot production build in the background
-       * so the single file materializes within seconds of dev startup. */
-      if (ensured) return;
-      ensured = true;
-      const distIndex = path.join(process.cwd(), "dist", "index.html");
-      if (!fs.existsSync(distIndex)) {
-        console.log("[coauds] dist/ missing — building the single-file bundle in the background…");
-        const child = spawn("npm", ["run", "build"], {
-          cwd: process.cwd(),
-          stdio: "ignore",
-          detached: true,
-          shell: process.platform === "win32",
-        });
-        child.unref();
-      }
-    },
     configureServer(server) {
+      ensureBuilt(); // warm the artifact as soon as the server starts
+
       server.middlewares.use((req, res, next) => {
         const host = String(req.headers.host || "").split(":")[0].toLowerCase();
-        if (LOCAL_HOSTS.has(host)) return next();
-        const url = (req.url || "").split("?")[0];
-        if (url === "/" || url === "/index.html") {
-          const distIndex = path.join(process.cwd(), "dist", "index.html");
-          if (fs.existsSync(distIndex)) {
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "text/html; charset=utf-8");
-            res.setHeader("Cache-Control", "no-store");
-            res.setHeader("X-CoAudS-Served-By", "dist/index.html (single-file)");
-            res.end(fs.readFileSync(distIndex));
-            return;
-          }
-        }
-        next();
+        if (LOCAL_HOSTS.has(host)) return next(); // localhost keeps HMR
+
+        const sendBuilt = () => {
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("X-CoAudS-Served-By", "dist/index.html (single-file)");
+          res.end(fs.readFileSync(distIndex()));
+        };
+        const sendBuilding = () => {
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("X-CoAudS-Served-By", "building");
+          res.end(
+            `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="2">` +
+            `<title>AI CoAudS — building</title></head>` +
+            `<body style="margin:0;background:#060b14;color:#587099;font-family:'IBM Plex Mono',monospace;display:flex;min-height:100vh;align-items:center;justify-content:center">` +
+            `<div style="text-align:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase">` +
+            `<div style="width:34px;height:34px;margin:0 auto 16px;border-radius:50%;border:2px solid #1a2a45;border-top-color:#38bdf8;animation:spin .9s linear infinite"></div>` +
+            `compiling single-file bundle…<br>` +
+            `<span style="text-transform:none;letter-spacing:.02em;color:#3d5480">auto-refreshes when ready</span></div>` +
+            `<style>@keyframes spin{to{transform:rotate(360deg)}}</style></body></html>`
+          );
+        };
+        const sendFailed = () => {
+          res.statusCode = 503;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.setHeader("X-CoAudS-Served-By", "build-failed");
+          res.end(
+            `<!doctype html><html><body style="margin:0;background:#060b14;color:#f87171;font-family:'IBM Plex Mono',monospace;display:flex;min-height:100vh;align-items:center;justify-content:center">` +
+            `<div style="text-align:center;font-size:12.5px;line-height:1.8;max-width:520px;padding:24px">` +
+            `<b style="color:#fca5a5">single-file build failed</b> — rebuilding in the background.<br>` +
+            `<a href="javascript:location.reload()" style="color:#38bdf8">retry now</a></div></body></html>`
+          );
+        };
+
+        if (buildState === "ready" && fs.existsSync(distIndex())) return sendBuilt();
+        if (buildState === "building") { ensureBuilt(); return sendBuilding(); }
+        // failed (or missing after a clean) → rebuild + error page
+        ensureBuilt();
+        return sendFailed();
       });
     },
   };
