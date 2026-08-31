@@ -84,6 +84,22 @@ jobs:
           echo "index: $PIP_INDEX_URL"
           pip install --dry-run -r backend/requirements.txt
 
+      - name: vuln-scan (pip-audit + bandit)
+        # "vulnerability-free" is enforced HERE, not hoped for:
+        #  · pip-audit resolves the manifest and audits every version
+        #    against the OSV database (crewai's own tree is included)
+        #  · bandit scans our source at MEDIUM severity or above
+        # A finding fails the job — fix the pin or the code; never
+        # silence this step with --skip or an ignore file.
+        env:
+          PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
+        run: |
+          pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
+          echo "── dependency graph audit ──"
+          pip-audit -r backend/requirements.txt --disable-pip --progress-spinner off
+          echo "── source scan (medium severity +) ──"
+          bandit -r backend -ll -q
+
   images:
     needs: [web, backend]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
