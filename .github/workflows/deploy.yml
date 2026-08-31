@@ -1,11 +1,17 @@
-# Deploys the audit console to GitHub Pages on every push to main.
+# Deploys the audit console to GitHub Pages.
+#
+# ⏸ GATED — manual only until the production stage.
+# To re-enable auto-deploy on every push to main, restore:
+#   on:
+#     push:
+#       branches: [main]
+#     workflow_dispatch:
+#
 # One-time setup: repo Settings → Pages → Source → "GitHub Actions".
 # The run page shows the live URL via the github-pages environment.
 name: deploy-pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

@@ -196,6 +196,16 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: { output: { inlineDynamicImports: true } },
   },
+  /* `npm run dev` = build once, then serve dist/ STATICALLY via
+   * `vite preview`. No transform pipeline, no per-module fetches, no HMR
+   * websocket — the preview is exactly the shipped artifact. Real HMR
+   * development lives on `npm run dev:hmr`. */
+  preview: {
+    host: true,
+    port: 3000,
+    strictPort: true,
+    allowedHosts: true,
+  },
   server: {
     host: "0.0.0.0",
     port: 3000,
