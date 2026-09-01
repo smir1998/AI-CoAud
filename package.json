@@ -6,8 +6,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run build && vite preview",
+    "dev:hmr": "vite",
     "build": "vite build",
+    "preview": "vite preview",
+    "serve": "npm run build && vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

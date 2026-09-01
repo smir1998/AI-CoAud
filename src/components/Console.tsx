@@ -4,7 +4,7 @@ import type { AuditInput } from "../analysis/pipeline";
 import { parsePRRef, PROVIDER_MODELS, type Provider } from "../analysis/external";
 import { CONFIG } from "../config";
 import { SEV_ORDER, type Severity } from "../analysis/scanner";
-import { AGENT_META, SEV_META, type AgentId } from "../types";
+import { AGENT_META, CREW_MAIN, CREW_PANEL, SEV_META, type AgentId } from "../types";
 import { FIXTURES } from "../data/fixtures";
 import DiffViewer from "./DiffViewer";
 import Findings from "./Findings";
@@ -25,7 +25,22 @@ function Led({ color, on, pulse }: { color: string; on: boolean; pulse?: boolean
   );
 }
 
-const AGENT_ORDER: AgentId[] = ["orchestrator", "style", "security", "tools", "refactor", "review"];
+function AgentChip({ id, status, count }: { id: AgentId; status: "pending" | "running" | "done"; count: number }) {
+  const m = AGENT_META[id];
+  const active = status === "running";
+  return (
+    <span
+      title={`${m.name} · ${m.model}`}
+      className={`chip border-ink-600 text-[9.5px] transition-all ${active ? "anim-pulse-soft" : ""}`}
+      style={active || status === "done" ? { borderColor: `${m.color}55`, color: m.color } : undefined}
+    >
+      <Led color={m.color} on={status !== "pending"} pulse={active} />
+      {m.short}
+      {status === "done" && count > 0 && <b>·{count}</b>}
+      {active && <span className="text-ink-500">…</span>}
+    </span>
+  );
+}
 
 const STAGES = [
   "webhook", "fetch diff", "audit plan", "parallel audit", "refactor", "review", "validate", "post review",
@@ -249,21 +264,17 @@ export default function Console() {
           })}
         </div>
 
-        <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-ink-700/50 pt-2.5">
-          {AGENT_ORDER.map((id) => {
-            const m = AGENT_META[id];
-            const a = state.agents[id];
-            const active = a.status === "running";
-            return (
-              <span key={id} className={`chip border-ink-600 text-[9.5px] transition-all ${active ? "anim-pulse-soft" : ""}`}
-                style={active || a.status === "done" ? { borderColor: `${m.color}55`, color: m.color } : undefined}>
-                <Led color={m.color} on={a.status !== "pending"} pulse={active} />
-                {m.short}
-                {a.status === "done" && a.count > 0 && <b>·{a.count}</b>}
-                {active && <span className="text-ink-500">…</span>}
-              </span>
-            );
-          })}
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-ink-700/50 pt-2.5">
+          {CREW_MAIN.map((id) => (
+            <AgentChip key={id} id={id} status={state.agents[id].status} count={state.agents[id].count} />
+          ))}
+          <span className="mx-1 hidden h-4 w-px bg-ink-700 sm:block" />
+          <span className="font-mono text-[8.5px] uppercase tracking-[0.18em] text-rosex/80" title="five parallel LLM security specialists — disjoint threat domains">
+            threat panel ×5
+          </span>
+          {CREW_PANEL.map((id) => (
+            <AgentChip key={id} id={id} status={state.agents[id].status} count={state.agents[id].count} />
+          ))}
           <span className="chip ml-auto border-ink-600 text-[9.5px] text-ink-400">
             <LayersIcon className="h-3 w-3 text-cyanx" /> detector: {shared.detectorMode}{shared.llmModel ? ` · ${shared.llmModel}` : ""}
           </span>

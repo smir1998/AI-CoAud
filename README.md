@@ -41,11 +41,20 @@ footer, so a deployed build is visibly different from a local one.
 | Agent | Job |
 |---|---|
 | Orchestrator | Fetches PR + diff, owns shared state, dispatches, aggregates |
-| Security | Injection, secrets, auth, deserialization, dependency risk |
+| **Threat panel ×5** | five parallel LLM specialists with disjoint domains: |
+| · Injection Hunter | SQLi · command · eval · template · XSS · log injection · traversal |
+| · Secrets Sentinel | hardcoded credentials, API keys, private key material |
+| · Access Auditor | auth, sessions, JWT, IDOR, cookie flags, debug exposure |
+| · Supply-Chain Auditor | deserialization, vulnerable/unpinned dependencies |
+| · Crypto & Transport | weak hashes, insecure PRNGs, TLS verification, key sizes |
 | Style | Smells, complexity, naming, duplication |
 | Refactor | Behavior-preserving patches with rationale |
 | Review | Dedupe, severity (Critical→Info), final markdown review |
 | Validation | Patch applicability, findings on changed lines, comment limits |
+
+With no API key configured, the panel degrades to **offline delegation**: each
+specialist adopts the deterministic rule findings inside its CWE domain, so
+attribution and counts still reflect the five-agent split.
 
 ## Quickstart — browser console
 

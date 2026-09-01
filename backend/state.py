@@ -128,6 +128,11 @@ class StateStore:
         if self._redis is None:
             log.info("state store: in-memory (local mode)")
 
+    @property
+    def redis_connected(self) -> bool:
+        """public liveness probe (health endpoint) — no private access needed"""
+        return self._redis is not None
+
     def key(self, run_id: str) -> str:
         return f"{self.PREFIX}{run_id}"
 
