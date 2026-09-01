@@ -18,8 +18,10 @@ class Settings(BaseSettings):
     # ── GitHub ─────────────────────────────────────────────
     github_token: str = ""
     github_webhook_secret: str = ""
-    # comma-separated owner/repo allowlist; empty list = allow all
-    allowed_repos: list[str] = Field(default_factory=list)
+    # comma-separated owner/repo allowlist; empty = allow all.
+    # kept as a raw string on purpose: pydantic-settings would demand a
+    # JSON array for a list field, and every deployment writes commas.
+    allowed_repos: str = ""
 
     # ── LLM (crewai / litellm read these too) ──────────────
     llm_model: str = "anthropic/claude-sonnet-4-5"

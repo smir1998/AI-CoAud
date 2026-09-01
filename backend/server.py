@@ -105,7 +105,10 @@ async def webhook(request: Request, x_hub_signature_256: str | None = Header(def
     if event != "pull_request":
         return {"status": "ignored", "event": event}
 
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="malformed JSON payload")
     action = payload.get("action")
     if action not in ("opened", "synchronize", "reopened"):
         return {"status": "ignored", "action": action}
