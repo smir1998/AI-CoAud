@@ -85,11 +85,12 @@ jobs:
           pip install --dry-run -r backend/requirements.txt
       - name: vuln-scan (pip-audit + bandit)
         run: |
-         pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
-         echo "── dependency graph audit ──"
-         pip-audit -r backend/requirements.txt --progress-spinner off
-         echo "── source scan (medium severity +) ──"
-         bandit -r backend -ll -q
+          pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
+          python -m pip install -r backend/requirements.txt
+          echo "── dependency graph audit ──"
+          pip-audit --desc --progress-spinner off
+          echo "── source scan (medium severity +) ──"
+          bandit -r backend -ll -q
 
   images:
     needs: [web, backend]
