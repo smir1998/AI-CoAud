@@ -56,10 +56,16 @@ async def lifespan(_: FastAPI):
     # startup misconfiguration audit — loud at boot, never leaked
     if not settings.github_token:
         log.warning("GITHUB_TOKEN unset — review posting disabled (read-only mode)")
+    
     if not settings.has_hmac:
-        log.warning("GITHUB_WEBHOOK_SECRET unset — HMAC verification DISABLED (dev mode!)")
+        if settings.dev_allow_unsigned_webhooks:
+            log.warning("⚠️  GITHUB_WEBHOOK_SECRET unset + DEV_ALLOW_UNSIGNED_WEBHOOKS=true — accepting unsigned webhooks (DEV MODE ONLY)")
+        else:
+            log.error("❌ GITHUB_WEBHOOK_SECRET unset — webhook endpoint will REJECT all requests (fail-closed)")
+    
     if not settings.repo_allowlist:
         log.warning("ALLOWED_REPOS empty — accepting webhooks from ANY repository")
+    
     tasks = [asyncio.create_task(worker(f"w{i}")) for i in range(settings.workers)]
     log.info("coauds server up — %d workers, queue cap %d", settings.workers, settings.max_queue)
     yield
@@ -83,11 +89,28 @@ async def security_headers(request: Request, call_next):
 
 
 def verify_signature(body: bytes, signature: str | None) -> None:
+    """Verify GitHub webhook HMAC-SHA256 signature.
+    
+    Security policy:
+    - Configured secret -> verify HMAC SHA-256 (fail-closed)
+    - Missing secret + DEV_ALLOW_UNSIGNED_WEBHOOKS=true -> allow with warning
+    - Missing secret without dev flag -> reject (fail-closed in production)
+    """
     if not WEBHOOK_SECRET:
-        return  # dev mode — set GITHUB_WEBHOOK_SECRET in production!
+        if settings.dev_allow_unsigned_webhooks:
+            log.warning("⚠️  ACCEPTING UNSIGNED WEBHOOK (dev mode) — NEVER use DEV_ALLOW_UNSIGNED_WEBHOOKS in production!")
+            return
+        else:
+            log.error("❌ REJECTING WEBHOOK: GITHUB_WEBHOOK_SECRET not configured")
+            raise HTTPException(
+                status_code=401, 
+                detail="webhook secret not configured — set GITHUB_WEBHOOK_SECRET or DEV_ALLOW_UNSIGNED_WEBHOOKS=true (dev only)"
+            )
+    
     expected = "sha256=" + hmac.new(WEBHOOK_SECRET, body, hashlib.sha256).hexdigest()
     if not signature or not hmac.compare_digest(expected, signature):
-        raise HTTPException(status_code=401, detail="bad signature")
+        log.warning("webhook signature verification failed")
+        raise HTTPException(status_code=401, detail="invalid signature")
 
 
 @app.post("/webhook", status_code=202)

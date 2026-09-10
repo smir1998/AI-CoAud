@@ -61,6 +61,16 @@ jobs:
       - name: syntax gate
         run: python -m compileall -q backend
 
+      - name: install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pytest-cov httpx
+
+      - name: run tests
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short
+
       - name: lint
         run: |
           pip install "ruff>=0.9,<1.0"
@@ -91,14 +101,22 @@ jobs:
         #  · bandit scans our source at MEDIUM severity or above
         # A finding fails the job — fix the pin or the code; never
         # silence this step with --skip or an ignore file.
+        #
+        # pip-audit runs in isolated virtual environment to avoid
+        # contaminating the application's dependency tree.
         env:
           PIP_INDEX_URL: ${{ vars.PIP_INDEX_URL || 'https://pypi.org/simple' }}
         run: |
-          pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
+          # Create isolated environment for pip-audit
+          python -m venv /tmp/audit-env
+          /tmp/audit-env/bin/pip install --quiet --upgrade pip
+          /tmp/audit-env/bin/pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
+          
           echo "── dependency graph audit ──"
-          pip-audit -r backend/requirements.txt --disable-pip --progress-spinner off
+          /tmp/audit-env/bin/pip-audit -r backend/requirements.txt --disable-pip --progress-spinner off
+          
           echo "── source scan (medium severity +) ──"
-          bandit -r backend -ll -q
+          /tmp/audit-env/bin/bandit -r backend -ll -q
 
   images:
     # ⏸ GATED — nothing is pushed to ghcr.io until the production stage.

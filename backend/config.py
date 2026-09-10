@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # ── GitHub ─────────────────────────────────────────────
     github_token: str = ""
     github_webhook_secret: str = ""
+    # Development mode flag - when true, allows unsigned webhooks with warning
+    # NEVER set this in production!
+    dev_allow_unsigned_webhooks: bool = False
     # comma-separated owner/repo allowlist; empty = allow all.
     # kept as a raw string on purpose: pydantic-settings would demand a
     # JSON array for a list field, and every deployment writes commas.
