@@ -37,7 +37,7 @@ tenacity>=8.2,<10.0
 crewai==1.15.18
 
 # ── deterministic scanners (pinned — independent, self-contained wheels) ─
-semgrep==1.100.0
+semgrep>=1.0,<2.0
 bandit==1.8.0
 ruff==0.8.6
 pip-audit==2.7.3
