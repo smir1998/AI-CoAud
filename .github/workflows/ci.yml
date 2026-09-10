@@ -99,6 +99,15 @@ jobs:
           pip install --dry-run -r backend/requirements.txt
 
       - name: vuln-scan (pip-audit + bandit)
+        run: |
+          pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
+          python -m pip install -r backend/requirements.txt
+          echo "── dependency graph audit ──"
+          pip-audit --config .pip-audit.toml --desc --progress-spinner off
+          echo "── source scan (medium severity +) ──"
+          bandit -r backend -ll -q
+
+      - name: vuln-scan (pip-audit + bandit)
         # "vulnerability-free" is enforced HERE, not hoped for:
         #  · pip-audit resolves the manifest and audits every version
         #    against the OSV database (crewai's own tree is included)

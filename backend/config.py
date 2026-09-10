@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=False)
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # ── GitHub ─────────────────────────────────────────────
     github_token: str = ""

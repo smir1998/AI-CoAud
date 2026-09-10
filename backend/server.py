@@ -96,10 +96,7 @@ def verify_signature(body: bytes, signature: str | None) -> None:
     - Missing secret + DEV_ALLOW_UNSIGNED_WEBHOOKS=true -> allow with warning
     - Missing secret without dev flag -> reject (fail-closed in production)
     """
-    # Read from settings directly (not cached WEBHOOK_SECRET) so tests can modify settings
-    secret = settings.github_webhook_secret.encode() if settings.github_webhook_secret else b""
-    
-    if not secret:
+    if not WEBHOOK_SECRET:
         if settings.dev_allow_unsigned_webhooks:
             log.warning("⚠️  ACCEPTING UNSIGNED WEBHOOK (dev mode) — NEVER use DEV_ALLOW_UNSIGNED_WEBHOOKS in production!")
             return
@@ -110,7 +107,7 @@ def verify_signature(body: bytes, signature: str | None) -> None:
                 detail="webhook secret not configured — set GITHUB_WEBHOOK_SECRET or DEV_ALLOW_UNSIGNED_WEBHOOKS=true (dev only)"
             )
     
-    expected = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
+    expected = "sha256=" + hmac.new(WEBHOOK_SECRET, body, hashlib.sha256).hexdigest()
     if not signature or not hmac.compare_digest(expected, signature):
         log.warning("webhook signature verification failed")
         raise HTTPException(status_code=401, detail="invalid signature")
