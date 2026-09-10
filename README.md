@@ -66,6 +66,34 @@ npm run build      # production bundle in dist/
 
 Open the **live console**, pick a sample PR or paste `owner/repo#123`. Add keys in the ⚙ drawer to enable LLM agents and real review posting.
 
+### Audit any public GitHub PR
+
+The console fetches **real PR data** from GitHub's REST API. Paste any public PR URL:
+- `facebook/react#12345`
+- `https://github.com/vercel/next.js/pull/56789`
+
+The app will:
+1. Fetch the PR metadata and diff via GitHub API
+2. Run the 5-agent security panel + deterministic rules
+3. Generate real findings with confidence scores
+4. Optionally post the review back to the PR (requires a GitHub token with `pull_request:write` scope)
+
+### Self-healing debugger
+
+The app includes an AI-powered self-healing debugger that:
+- Catches all runtime errors (React errors, unhandled rejections, etc.)
+- Analyzes the error with the configured LLM provider
+- Proposes a fix with confidence score and recovery steps
+- Requires **human approval** before applying any fix
+
+When an error occurs, the debugger shows:
+- Error diagnosis and root cause analysis
+- Suggested fix (code snippet or config change)
+- Step-by-step recovery instructions
+- Confidence level (0-100%)
+
+**Note:** The debugger requires an LLM API key (Anthropic or OpenAI) to be configured in Settings.
+
 ## Repository layout
 
 ```
