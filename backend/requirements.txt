@@ -21,25 +21,20 @@
 #   bash scripts/check-deps.sh && docker compose build api
 
 # ── core service (hard pins — no overlap with the agent tree) ────────────
-fastapi==0.115.6
+fastapi>=0.128.3,<1.0
 uvicorn[standard]==0.34.0
 redis==5.2.1
-chromadb>=1.4.0,<2.0
+chromadb~=1.1.0
 
-# ── shared with the agent tree (crewai's floors win; we cap majors only) ──
 httpx<1.0
 pydantic>=2.11,<3.0
 pydantic-settings>=2.14.2,<3.0
 tenacity>=8.2,<10.0
-starlette>=1.1.0,<2.0
 
-# ── agent stack (single anchor — its whole tree resolves freely) ─────────
-# NOTE: anthropic/openai are owned by litellm inside this tree. The backend
-# imports neither directly — pinning them here caused three CI failures.
+# ── agent stack ─────────────────────────────────────────────────────────
 crewai==1.15.18
 
-# ── deterministic scanners (pinned — independent, self-contained wheels) ─
+# ── runtime security/static tooling only ────────────────────────────────
 semgrep>=1.0,<2.0
 bandit==1.8.0
 ruff==0.8.6
-pip-audit==2.7.3
