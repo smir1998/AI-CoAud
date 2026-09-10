@@ -31,6 +31,7 @@ httpx<1.0
 pydantic>=2.11,<3.0
 pydantic-settings>=2.14.2,<3.0
 tenacity>=8.2,<10.0
+starlette>=1.1.0,<2.0
 
 # ── agent stack (single anchor — its whole tree resolves freely) ─────────
 # NOTE: anthropic/openai are owned by litellm inside this tree. The backend
