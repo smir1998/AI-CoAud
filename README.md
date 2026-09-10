@@ -12,7 +12,7 @@ GitHub PR ──▶ webhook ──▶ orchestrator ──▶ security · style �
 
 ## Live
 
-👉 **https://\<your-username\>.github.io/\<repo-name\>/**
+👉 **https://smir1998.github.io/AI-CoAud/**
 
 Deployed automatically on every push to `main` by
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — GitHub Pages, zero servers.
