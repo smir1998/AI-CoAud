@@ -31,13 +31,10 @@ pydantic>=2.11,<3.0
 pydantic-settings>=2.14.2,<3.0
 tenacity>=8.2,<10.0
 
-# ── agent stack (single anchor — its whole tree resolves freely) ─────────
-# NOTE: anthropic/openai are owned by litellm inside this tree. The backend
-# imports neither directly — pinning them here caused three CI failures.
+# ── agent stack ─────────────────────────────────────────────────────────
 crewai==1.15.18
 
-# ── deterministic scanners (pinned — independent, self-contained wheels) ─
+# ── runtime security/static tooling only ────────────────────────────────
 semgrep>=1.0,<2.0
 bandit==1.8.0
 ruff==0.8.6
-pip-audit>=2.10,<3
