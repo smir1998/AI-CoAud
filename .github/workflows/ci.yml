@@ -96,7 +96,7 @@ jobs:
         run: |
           pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
           echo "── dependency graph audit ──"
-          pip-audit -r backend/requirements.txt --disable-pip --progress-spinner off
+          pip-audit -r backend/requirements.txt --progress-spinner off          
           echo "── source scan (medium severity +) ──"
           bandit -r backend -ll -q
 
