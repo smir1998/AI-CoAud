@@ -1,260 +1,313 @@
-// AI CoAudS - Live Console Component
-// Main interface for the agentic PR audit system
+// Modern Agentic Console - Real-time AI agent visualization
+import { useState, useEffect, useRef } from 'react';
+import { runAgent, simulateAgent, type AgentStep, type AgentState } from '../agents/runtime';
+import { CONFIG } from '../config';
 
-import { useState, useEffect } from 'react';
-
-interface AuditResult {
-  prNumber: number;
-  repository: string;
-  findings: Finding[];
-  status: 'pending' | 'running' | 'completed' | 'error';
-  timestamp: number;
+interface ConsoleProps {
+  apiKey?: string;
 }
 
-interface Finding {
-  id: string;
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  file: string;
-  line: number;
-  agent: string;
-  confidence: number;
-}
-
-export function Console() {
-  const [prUrl, setPrUrl] = useState('');
-  const [audits, setAudits] = useState<AuditResult[]>([]);
+export function Console({ apiKey }: ConsoleProps) {
+  const [task, setTask] = useState('');
+  const [context, setContext] = useState('');
   const [isRunning, setIsRunning] = useState(false);
-  const [selectedAudit, setSelectedAudit] = useState<AuditResult | null>(null);
+  const [steps, setSteps] = useState<AgentStep[]>([]);
+  const [status, setStatus] = useState<AgentState['status']>('idle');
+  const [error, setError] = useState<string>();
+  const [useSimulation, setUseSimulation] = useState(!apiKey);
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
-  const startAudit = async () => {
-    if (!prUrl.trim()) return;
-    
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [steps]);
+
+  const handleRun = async () => {
+    if (!task.trim()) return;
+
     setIsRunning(true);
-    
-    // Parse PR URL
-    const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-    if (!match) {
-      alert('Invalid GitHub PR URL');
+    setSteps([]);
+    setError(undefined);
+    setStatus('thinking');
+
+    const callbacks = {
+      onThought: (thought: string) => {
+        setSteps(prev => [...prev, {
+          type: 'thought',
+          content: thought,
+          timestamp: Date.now(),
+        }]);
+        setStatus('thinking');
+      },
+      onAction: (action: any) => {
+        setSteps(prev => [...prev, {
+          type: 'action',
+          content: `Calling ${action.function.name}`,
+          timestamp: Date.now(),
+          toolCall: action,
+        }]);
+        setStatus('acting');
+      },
+      onObservation: (observation: string) => {
+        setSteps(prev => [...prev, {
+          type: 'observation',
+          content: observation,
+          timestamp: Date.now(),
+        }]);
+        setStatus('observing');
+      },
+      onReflection: (reflection: string) => {
+        setSteps(prev => [...prev, {
+          type: 'reflection',
+          content: reflection,
+          timestamp: Date.now(),
+        }]);
+        setStatus('reflecting');
+      },
+      onComplete: (result: any) => {
+        setStatus('complete');
+        setIsRunning(false);
+      },
+      onError: (error: any) => {
+        setError(error.message);
+        setStatus('error');
+        setIsRunning(false);
+      },
+    };
+
+    try {
+      if (useSimulation || !apiKey) {
+        await simulateAgent(task, context, callbacks);
+      } else {
+        CONFIG.llm.apiKey = apiKey;
+        await runAgent(task, context, callbacks);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setStatus('error');
       setIsRunning(false);
-      return;
     }
-
-    const [, owner, repo, prNumber] = match;
-    
-    // Simulate audit process
-    const newAudit: AuditResult = {
-      prNumber: parseInt(prNumber),
-      repository: `${owner}/${repo}`,
-      findings: [],
-      status: 'running',
-      timestamp: Date.now(),
-    };
-    
-    setAudits([newAudit, ...audits]);
-    setSelectedAudit(newAudit);
-
-    // Simulate agent processing
-    setTimeout(() => {
-      const completedAudit: AuditResult = {
-        ...newAudit,
-        status: 'completed',
-        findings: generateMockFindings(parseInt(prNumber)),
-      };
-      
-      setAudits(audits.map(a => a.timestamp === newAudit.timestamp ? completedAudit : a));
-      setSelectedAudit(completedAudit);
-      setIsRunning(false);
-    }, 3000);
   };
 
-  const generateMockFindings = (prNumber: number): Finding[] => {
-    const severities: Finding['severity'][] = ['critical', 'high', 'medium', 'low'];
-    const agents = ['Injection Hunter', 'Secrets Sentinel', 'Access Auditor', 'Supply-Chain Auditor', 'Crypto & Transport Auditor'];
-    
-    return Array.from({ length: Math.floor(Math.random() * 5) + 3 }, (_, i) => ({
-      id: `finding-${prNumber}-${i}`,
-      severity: severities[Math.floor(Math.random() * severities.length)],
-      title: `Security Issue ${i + 1}`,
-      description: `Potential vulnerability detected in the pull request`,
-      file: `src/module${i + 1}.ts`,
-      line: Math.floor(Math.random() * 100) + 1,
-      agent: agents[Math.floor(Math.random() * agents.length)],
-      confidence: Math.random() * 0.3 + 0.7,
-    }));
+  const getStatusColor = (status: AgentState['status']) => {
+    switch (status) {
+      case 'thinking': return 'text-purple-400';
+      case 'acting': return 'text-blue-400';
+      case 'observing': return 'text-cyan-400';
+      case 'reflecting': return 'text-amber-400';
+      case 'complete': return 'text-emerald-400';
+      case 'error': return 'text-red-400';
+      default: return 'text-gray-400';
+    }
   };
 
-  const getSeverityColor = (severity: Finding['severity']) => {
-    const colors = {
-      critical: 'bg-red-500/20 text-red-400 border-red-500/50',
-      high: 'bg-orange-500/20 text-orange-400 border-orange-500/50',
-      medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-      low: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-    };
-    return colors[severity];
+  const getStatusIcon = (status: AgentState['status']) => {
+    switch (status) {
+      case 'thinking': return '💭';
+      case 'acting': return '⚡';
+      case 'observing': return '👁️';
+      case 'reflecting': return '🔄';
+      case 'complete': return '✅';
+      case 'error': return '❌';
+      default: return '⏸️';
+    }
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-ink-950">
       {/* Header */}
-      <div className="border-b border-ink-700/50 bg-ink-900/50 p-6">
-        <h2 className="font-display text-2xl font-bold text-ink-100 mb-4">
-          Live Audit Console
-        </h2>
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={prUrl}
-            onChange={(e) => setPrUrl(e.target.value)}
-            placeholder="https://github.com/owner/repo/pull/123"
-            className="flex-1 px-4 py-2 bg-ink-800 border border-ink-600 rounded-lg text-ink-100 placeholder-ink-500 focus:outline-none focus:border-orchid/60"
-            disabled={isRunning}
-          />
-          <button
-            onClick={startAudit}
-            disabled={isRunning || !prUrl.trim()}
-            className="px-6 py-2 bg-orchid/20 border border-orchid/50 text-orchid rounded-lg font-semibold hover:bg-orchid/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isRunning ? 'Auditing...' : 'Start Audit'}
-          </button>
-        </div>
-      </div>
+      <div className="border-b border-ink-700/50 bg-ink-900/50 backdrop-blur-xl">
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold gradient-text">AI CoAudS Console</h1>
+              <p className="text-sm text-ink-400 mt-1">Agentic AI Code Audit System</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className={`status-dot ${status === 'complete' ? 'active' : status === 'error' ? 'error' : isRunning ? 'running' : ''}`} />
+              <span className={`text-sm font-medium ${getStatusColor(status)}`}>
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </span>
+            </div>
+          </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Audit List */}
-        <div className="w-80 border-r border-ink-700/50 overflow-y-auto">
-          <div className="p-4">
-            <h3 className="font-display text-sm font-semibold text-ink-400 uppercase tracking-wider mb-3">
-              Recent Audits
-            </h3>
-            {audits.length === 0 ? (
-              <p className="text-ink-500 text-sm">No audits yet</p>
-            ) : (
-              <div className="space-y-2">
-                {audits.map((audit) => (
-                  <button
-                    key={audit.timestamp}
-                    onClick={() => setSelectedAudit(audit)}
-                    className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                      selectedAudit?.timestamp === audit.timestamp
-                        ? 'bg-orchid/10 border-orchid/50'
-                        : 'bg-ink-800/50 border-ink-700/50 hover:bg-ink-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono text-sm text-ink-100">
-                        #{audit.prNumber}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        audit.status === 'completed' ? 'bg-emx/20 text-emx' :
-                        audit.status === 'running' ? 'bg-cyanx/20 text-cyanx' :
-                        audit.status === 'error' ? 'bg-rosex/20 text-rosex' :
-                        'bg-ink-700 text-ink-400'
-                      }`}>
-                        {audit.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-ink-400 truncate">
-                      {audit.repository}
-                    </div>
-                    {audit.findings.length > 0 && (
-                      <div className="text-xs text-ink-500 mt-1">
-                        {audit.findings.length} findings
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+          {/* Input Section */}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-ink-300 mb-2">
+                Task / Audit Request
+              </label>
+              <textarea
+                value={task}
+                onChange={(e) => setTask(e.target.value)}
+                placeholder="e.g., Audit this React component for security vulnerabilities..."
+                className="input-modern w-full h-20 resize-none"
+                disabled={isRunning}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-ink-300 mb-2">
+                Code Context
+              </label>
+              <textarea
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                placeholder="Paste code to audit..."
+                className="input-modern w-full h-32 resize-none font-mono text-sm"
+                disabled={isRunning}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm text-ink-300">
+                <input
+                  type="checkbox"
+                  checked={useSimulation}
+                  onChange={(e) => setUseSimulation(e.target.checked)}
+                  className="rounded"
+                  disabled={isRunning}
+                />
+                Simulation Mode {!apiKey && '(No API key)'}
+              </label>
+
+              <button
+                onClick={handleRun}
+                disabled={isRunning || !task.trim()}
+                className="btn-primary"
+              >
+                {isRunning ? (
+                  <span className="flex items-center gap-2">
+                    <span className="anim-spin">⚙️</span>
+                    Running...
+                  </span>
+                ) : (
+                  '🚀 Run Agent'
+                )}
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Audit Details */}
-        <div className="flex-1 overflow-y-auto">
-          {selectedAudit ? (
-            <div className="p-6">
-              <div className="mb-6">
-                <h3 className="font-display text-xl font-bold text-ink-100 mb-2">
-                  PR #{selectedAudit.prNumber}
-                </h3>
-                <p className="text-ink-400">{selectedAudit.repository}</p>
-                <p className="text-xs text-ink-500 mt-1">
-                  {new Date(selectedAudit.timestamp).toLocaleString()}
-                </p>
-              </div>
-
-              {selectedAudit.status === 'running' && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <div className="inline-block w-12 h-12 border-4 border-orchid/30 border-t-orchid rounded-full animate-spin mb-4"></div>
-                    <p className="text-ink-400">Agents analyzing pull request...</p>
-                  </div>
-                </div>
-              )}
-
-              {selectedAudit.status === 'completed' && (
-                <div>
-                  <div className="grid grid-cols-4 gap-4 mb-6">
-                    {['critical', 'high', 'medium', 'low'].map((severity) => {
-                      const count = selectedAudit.findings.filter(f => f.severity === severity).length;
-                      return (
-                        <div key={severity} className={`p-4 rounded-lg border ${getSeverityColor(severity as Finding['severity'])}`}>
-                          <div className="text-3xl font-bold">{count}</div>
-                          <div className="text-sm uppercase tracking-wider">{severity}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <h4 className="font-display text-lg font-semibold text-ink-100 mb-4">
-                    Findings
-                  </h4>
-                  <div className="space-y-3">
-                    {selectedAudit.findings.map((finding) => (
-                      <div
-                        key={finding.id}
-                        className="p-4 bg-ink-800/50 border border-ink-700/50 rounded-lg"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getSeverityColor(finding.severity)}`}>
-                              {finding.severity.toUpperCase()}
-                            </span>
-                            <span className="font-semibold text-ink-100">
-                              {finding.title}
-                            </span>
-                          </div>
-                          <span className="text-xs text-ink-500">
-                            {(finding.confidence * 100).toFixed(0)}% confidence
-                          </span>
-                        </div>
-                        <p className="text-sm text-ink-300 mb-2">
-                          {finding.description}
-                        </p>
-                        <div className="flex items-center gap-4 text-xs text-ink-500">
-                          <span className="font-mono">{finding.file}:{finding.line}</span>
-                          <span>Detected by: {finding.agent}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-ink-500">
-                <p className="text-lg mb-2">No audit selected</p>
-                <p className="text-sm">Enter a GitHub PR URL to start auditing</p>
-              </div>
+      {/* Agent Steps Visualization */}
+      <div className="flex-1 overflow-y-auto scroll-modern">
+        <div className="px-6 py-4 space-y-4">
+          {steps.length === 0 && !isRunning && (
+            <div className="text-center py-20">
+              <div className="text-6xl mb-4">🤖</div>
+              <h3 className="text-xl font-semibold text-ink-200 mb-2">
+                Ready to Audit
+              </h3>
+              <p className="text-ink-400 max-w-md mx-auto">
+                Enter a task and code context above, then click "Run Agent" to start the agentic AI audit.
+              </p>
             </div>
           )}
+
+          {steps.map((step, idx) => (
+            <div
+              key={idx}
+              className="anim-fade"
+              style={{ animationDelay: `${idx * 50}ms` }}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-ink-800 flex items-center justify-center text-lg">
+                  {step.type === 'thought' && '💭'}
+                  {step.type === 'action' && '⚡'}
+                  {step.type === 'observation' && '👁️'}
+                  {step.type === 'reflection' && '🔄'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-xs font-semibold uppercase tracking-wide ${
+                      step.type === 'thought' ? 'text-purple-400' :
+                      step.type === 'action' ? 'text-blue-400' :
+                      step.type === 'observation' ? 'text-cyan-400' :
+                      'text-amber-400'
+                    }`}>
+                      {step.type}
+                    </span>
+                    <span className="text-xs text-ink-500">
+                      {new Date(step.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+
+                  {step.type === 'thought' && (
+                    <div className="thought-bubble">
+                      {step.content}
+                    </div>
+                  )}
+
+                  {step.type === 'action' && step.toolCall && (
+                    <div className="code-block">
+                      <div className="text-xs text-ink-400 mb-2">
+                        Tool: {step.toolCall.function.name}
+                      </div>
+                      <pre className="text-sm text-ink-200 overflow-x-auto">
+                        {JSON.stringify(JSON.parse(step.toolCall.function.arguments), null, 2)}
+                      </pre>
+                    </div>
+                  )}
+
+                  {step.type === 'observation' && (
+                    <div className="code-block bg-emerald-500/5 border-emerald-500/20">
+                      <pre className="text-sm text-ink-200 overflow-x-auto whitespace-pre-wrap">
+                        {step.content}
+                      </pre>
+                    </div>
+                  )}
+
+                  {step.type === 'reflection' && (
+                    <div className="thought-bubble bg-amber-500/10 border-amber-500/30">
+                      <div className="text-xs font-semibold text-amber-400 mb-2">
+                        📝 Final Reflection
+                      </div>
+                      {step.content}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {isRunning && (
+            <div className="flex items-center gap-3 text-ink-400 anim-fade">
+              <div className="status-dot running" />
+              <span className="text-sm">Agent is {status}...</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="anim-fade bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-red-400 font-semibold">❌ Error</span>
+              </div>
+              <p className="text-sm text-red-300">{error}</p>
+            </div>
+          )}
+
+          <div ref={logsEndRef} />
         </div>
       </div>
+
+      {/* Footer Stats */}
+      {steps.length > 0 && (
+        <div className="border-t border-ink-700/50 bg-ink-900/50 backdrop-blur-xl px-6 py-3">
+          <div className="flex items-center justify-between text-xs text-ink-400">
+            <div className="flex items-center gap-4">
+              <span>Steps: {steps.length}</span>
+              <span>•</span>
+              <span>Thoughts: {steps.filter(s => s.type === 'thought').length}</span>
+              <span>•</span>
+              <span>Actions: {steps.filter(s => s.type === 'action').length}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="status-dot active" />
+              <span>Mode: {useSimulation ? 'Simulation' : 'Live LLM'}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-export default Console;

@@ -1,6 +1,6 @@
 import { Component, Suspense, lazy, useState, type ErrorInfo, type ReactNode } from "react";
 import { CONFIG } from "./config";
-import Console from "./components/Console";
+import { Console } from "./components/Console";
 import { ActivityIcon, ArrowUpRightIcon, BookIcon, CodeIcon, GitHubIcon, LogoIcon, MarkdownIcon, ShieldIcon, WebhookIcon } from "./components/icons";
 import { ErrorBoundary, setupGlobalErrorHandler, type CapturedError } from "./components/ErrorBoundary";
 import { SelfHealingDebugger } from "./components/SelfHealingDebugger";
