@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { runAgent, simulateAgent, type AgentStep, type AgentState } from '../agents/runtime';
 import { CONFIG } from '../config';
+import { GitHubInput } from './GitHubInput';
 
 interface ConsoleProps {
   apiKey?: string;
@@ -15,6 +16,7 @@ export function Console({ apiKey }: ConsoleProps) {
   const [status, setStatus] = useState<AgentState['status']>('idle');
   const [error, setError] = useState<string>();
   const [useSimulation, setUseSimulation] = useState(!apiKey);
+  const [inputMode, setInputMode] = useState<'manual' | 'github'>('github');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -132,6 +134,32 @@ export function Console({ apiKey }: ConsoleProps) {
 
           {/* Input Section */}
           <div className="space-y-3">
+            {/* Input Mode Toggle */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setInputMode('github')}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  inputMode === 'github'
+                    ? 'bg-orchid text-white'
+                    : 'bg-ink-800 text-ink-300 hover:bg-ink-700'
+                }`}
+                disabled={isRunning}
+              >
+                🐙 GitHub Repository/PR
+              </button>
+              <button
+                onClick={() => setInputMode('manual')}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  inputMode === 'manual'
+                    ? 'bg-orchid text-white'
+                    : 'bg-ink-800 text-ink-300 hover:bg-ink-700'
+                }`}
+                disabled={isRunning}
+              >
+                ✍️ Manual Input
+              </button>
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-ink-300 mb-2">
                 Task / Audit Request
@@ -145,18 +173,36 @@ export function Console({ apiKey }: ConsoleProps) {
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-ink-300 mb-2">
-                Code Context
-              </label>
-              <textarea
-                value={context}
-                onChange={(e) => setContext(e.target.value)}
-                placeholder="Paste code to audit..."
-                className="input-modern w-full h-32 resize-none font-mono text-sm"
+            {/* Conditional Input */}
+            {inputMode === 'github' ? (
+              <GitHubInput
+                onContentReady={(content, metadata) => {
+                  setContext(content);
+                  // Auto-generate task based on metadata
+                  if (metadata.type === 'pr') {
+                    setTask(`Audit PR #${metadata.pr.number}: ${metadata.pr.title} for security vulnerabilities, code quality issues, and best practices.`);
+                  } else if (metadata.type === 'repo') {
+                    setTask(`Audit the selected files from ${metadata.owner}/${metadata.repoName} for security vulnerabilities and code quality.`);
+                  } else if (metadata.type === 'file') {
+                    setTask(`Audit ${metadata.path} for security vulnerabilities and code quality issues.`);
+                  }
+                }}
                 disabled={isRunning}
               />
-            </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-medium text-ink-300 mb-2">
+                  Code Context
+                </label>
+                <textarea
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
+                  placeholder="Paste code to audit..."
+                  className="input-modern w-full h-32 resize-none font-mono text-sm"
+                  disabled={isRunning}
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-sm text-ink-300">
@@ -172,7 +218,7 @@ export function Console({ apiKey }: ConsoleProps) {
 
               <button
                 onClick={handleRun}
-                disabled={isRunning || !task.trim()}
+                disabled={isRunning || !task.trim() || !context.trim()}
                 className="btn-primary"
               >
                 {isRunning ? (

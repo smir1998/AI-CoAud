@@ -13,6 +13,7 @@ A modern, agentic AI-powered code audit system that uses autonomous agents to an
 - 🌐 **Multi-Provider Support**: Works with Anthropic Claude and OpenAI GPT models
 - ⚡ **Streaming Responses**: Real-time token-by-token output
 - 🎯 **Tool Use**: Agents can call tools to gather information and execute actions
+- 🐙 **GitHub Integration**: Audit real GitHub repositories, PRs, and files directly
 
 ## 🚀 Quick Start
 
@@ -45,6 +46,33 @@ For real AI-powered analysis:
 2. Enter your Anthropic or OpenAI API key
 3. Select your preferred model
 4. Run audits with real LLM-powered agents
+
+### 🐙 GitHub Integration (Audit Real Code)
+
+Audit actual GitHub repositories, pull requests, and files:
+
+1. **Switch to "GitHub Repository/PR" mode** in the console
+2. **Enter a GitHub URL**:
+   - Pull Request: `https://github.com/owner/repo/pull/123`
+   - Repository: `https://github.com/owner/repo`
+   - File: `https://github.com/owner/repo/blob/main/src/file.ts`
+3. **Click "Fetch"** to load the repository/PR
+4. **Select files** to audit from the file browser
+5. **Task auto-generates** based on the GitHub metadata
+6. **Click "Run Agent"** to audit the real code!
+
+**Features:**
+- ✅ No authentication required for public repos
+- ✅ Browse and select specific files
+- ✅ View diffs and changes in PRs
+- ✅ Automatic task generation
+- ✅ Full file content fetching
+
+**Rate Limits:**
+- 60 requests/hour without authentication
+- 5,000 requests/hour with GitHub token (optional)
+
+See [GitHub Integration Guide](GITHUB_INTEGRATION.md) for detailed usage.
 
 ## 🏗️ Architecture
 
