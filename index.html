@@ -1,112 +1,97 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI CoAudS — Agentic PR Audit Console</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <title>coder-app-name</title>
     <link
-      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     />
     <style>
-      html, body, #root { margin: 0; width: 100%; min-height: 100%; background-color: #060b14; }
-      /* boot fallback — replaced the instant React mounts */
-      #boot-fallback {
-        min-height: 100vh; display: flex; align-items: center; justify-content: center;
-        font-family: "IBM Plex Mono", ui-monospace, monospace; color: #587099;
+      /* 内联样式确保主题色立即生效，避免闪烁 */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
       }
-      #boot-fallback .ring {
-        width: 34px; height: 34px; border-radius: 50%;
-        border: 2px solid #1a2a45; border-top-color: #38bdf8;
-        animation: bootspin 0.9s linear infinite; margin: 0 auto 14px;
+      html.light,
+      html.light body {
+        background-color: #ffffff !important;
+        color: #000000;
       }
-      #boot-fallback .card { text-align: center; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
-      #boot-fallback .note {
-        margin-top: 12px; font-size: 10.5px; letter-spacing: 0.02em; text-transform: none;
-        color: #f5a524; min-height: 15px; transition: color .3s ease;
+      html.dark,
+      html.dark body {
+        background-color: #1a1a1a !important;
+        color: #ffffff;
       }
-      #boot-fallback.err { color: #f87171; text-transform: none; letter-spacing: 0.02em; font-size: 12.5px; line-height: 1.7; max-width: 540px; padding: 24px; }
-      #boot-fallback.err .ring { display: none; }
-      #boot-fallback.err b { color: #fca5a5; }
-      #boot-fallback.err .phase { color: #587099; font-size: 10.5px; margin-top: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
-      @keyframes bootspin { to { transform: rotate(360deg); } }
     </style>
-  </head>
-  <body>
-    <div id="root">
-      <div id="boot-fallback">
-        <div class="card">
-          <div class="ring"></div>
-          booting audit console
-          <div class="note" id="boot-note"></div>
-        </div>
-      </div>
-    </div>
     <script>
-      /* Progressive boot watchdog. Boot phases:
-       *   html   — this page parsed (set below)
-       *   exec   — the bundle started executing (set by main.tsx)
-       *   mounted— React committed the tree (set by main.tsx)
-       * At 8s we only WARN (first dev-server compiles routinely exceed it);
-       * the hard diagnosis card appears at 30s. Nothing fails silently. */
-      window.__coauds_boot = "html";
+      // 在 React 加载前立即设置主题，避免闪烁
       (function () {
-        var fb = document.getElementById("boot-fallback");
-        var note = document.getElementById("boot-note");
-        var done = function () { return window.__coauds_mounted === true; };
+        const isInIframe = window.self !== window.top;
 
-        function fail(title, detail) {
-          if (!fb || done()) return;
-          fb.className = "err";
-          fb.innerHTML =
-            "<b>" + title + "</b><br><br>" + detail +
-            '<div class="phase">boot phase reached: ' + (window.__coauds_boot || "html") +
-            (window.__coauds_mounted ? " · mounted" : "") + "</div>";
+        function applyThemeToDOM(theme) {
+          document.documentElement.classList.remove("light", "dark");
+          document.documentElement.classList.add(theme);
+          document.documentElement.setAttribute("data-theme", theme);
         }
 
-        /* a fetch/parse failure of the entry module itself */
-        var tag = document.getElementById("app-module");
-        if (tag) {
-          tag.addEventListener("error", function () {
-            fail("the bundle failed to load",
-              "The module script never arrived (404 or blocked by the network). " +
-              "Hard-refresh (Ctrl/Cmd+Shift+R) — the page is likely holding a stale asset map.");
+        if (isInIframe) {
+          // 监听父窗口主动推送的主题消息
+          window.addEventListener("message", function (event) {
+            if (event.data && typeof event.data.theme === "string") {
+              const theme = event.data.theme;
+              if (theme === "light" || theme === "dark") {
+                applyThemeToDOM(theme);
+              }
+            }
           });
+        } else {
+          // 非 iframe 环境，使用默认 light 主题
+          applyThemeToDOM("light");
         }
-
-        /* a synchronous throw while the bundle executes */
-        window.addEventListener("error", function (e) {
-          if (!done() && window.__coauds_boot === "exec") {
-            fail("script fault while booting", e.message || "unknown error");
-          }
-        });
-
-        setTimeout(function () {
-          if (done() || !note) return;
-          if (window.__coauds_boot === "html") {
-            note.textContent = "still downloading the bundle — first dev-server compile can take a while…";
-          } else {
-            note.textContent = "bundle executing — mounting React…";
-          }
-        }, 8000);
-
-        setTimeout(function () {
-          if (done()) return;
-          if (window.__coauds_boot === "html") {
-            fail("the console never started",
-              "The bundle did not begin executing within 30s. Likely a very slow network, " +
-              "a cold dev server still compiling, or an asset blocked upstream. " +
-              "Hard-refresh (Ctrl/Cmd+Shift+R); in development, give the dev server a moment and reload.");
-          } else {
-            fail("the console stalled while mounting",
-              "The bundle executed but React never committed. Check the browser console for the fault; " +
-              "a hard refresh (Ctrl/Cmd+Shift+R) clears stale bundles.");
-          }
-        }, 30000);
       })();
     </script>
-    <script id="app-module" type="module" src="/src/main.tsx"></script>
+      <script>
+      (function () {
+        if (window.self === window.top) return;
+        var reported = {};
+        window.addEventListener("error", function (event) {
+          // 资源加载失败的 error 事件没有 message，此处仅上报 JS 运行时错误
+          if (!event || !event.message) return;
+          var key =
+            event.message + "|" + (event.filename || "") + "|" + (event.lineno || 0);
+          if (reported[key]) return; // 相同错误只上报一次，避免渲染循环刷屏
+          reported[key] = true;
+          try {
+            window.parent.postMessage(
+              {
+                type: "sandbox-runtime-error",
+                payload: {
+                  message: String(event.message).slice(0, 500),
+                  filename: event.filename || "",
+                  lineno: event.lineno || 0,
+                  colno: event.colno || 0,
+                  stack:
+                    event.error && event.error.stack
+                      ? String(event.error.stack).slice(0, 2000)
+                      : ""
+                }
+              },
+              "*"
+            );
+          } catch (e) {
+            /* 上报失败不影响页面运行 */
+          }
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

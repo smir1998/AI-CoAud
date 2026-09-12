@@ -30,7 +30,10 @@ export interface EngineState {
   pulses: Record<string, number>;
 }
 
-const AGENT_IDS: AgentId[] = ["orchestrator", "style", "security", "tools", "refactor", "review"];
+const AGENT_IDS: AgentId[] = [
+  "orchestrator", "style", "security", "tools", "refactor", "review",
+  "inj", "secret", "auth", "supply", "crypto",
+];
 
 const initialAgents = () =>
   Object.fromEntries(AGENT_IDS.map((id) => [id, { status: "pending", count: 0 }])) as EngineState["agents"];

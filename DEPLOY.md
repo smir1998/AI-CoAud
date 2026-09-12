@@ -14,6 +14,28 @@ Two deployables: the **web console** (static SPA) and the **webhook service**
 └── README.md
 ```
 
+## 0 — Preview architecture & production gate
+
+**Preview = static, always.** The console is built to a single self-contained
+`dist/index.html`, so previews run `npm run dev` → **one build, then
+`vite preview`** — a plain static server on `:3000`. No transform pipeline,
+no per-module fetches, no HMR websocket: whatever the page serves is exactly
+what production ships. (`npm run dev:hmr` restores the classic Vite dev loop
+for local work.) Proxied preview hosts are additionally rescued by a
+middleware fallback in `vite.config.js`, so even a harness that launches the
+dev server directly gets the single file.
+
+**Production deploys are gated off until the production stage:**
+
+| Pipeline | State now | Re-enable when |
+|---|---|---|
+| `deploy.yml` (GitHub Pages) | `workflow_dispatch` only | restore `on.push.branches: [main]` |
+| `ci.yml` → images (ghcr.io push) | requires repo variable | set `ENABLE_IMAGE_PUBLISH = true` |
+
+CI keeps running every quality gate (typecheck, build, syntax, lint,
+dependency resolve-check, pip-audit + bandit vuln-scan) — nothing ships, but
+everything is verified on every push.
+
 ## 1 — Local, everything at once
 
 ```bash
@@ -27,7 +49,8 @@ docker compose up --build
 No Docker? Run the halves by hand:
 
 ```bash
-npm run dev                                  # console on :5173
+npm run dev                                  # build once → static console on :3000
+                                             # (npm run dev:hmr for the live dev loop)
 cd backend && python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 REDIS_URL= uvicorn server:app --reload       # in-memory state mode

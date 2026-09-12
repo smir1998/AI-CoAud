@@ -6,16 +6,20 @@
 import {
   SEV_ORDER,
   parseUnifiedDiff, scanFiles, validatePatch,
-  type Finding, type FindingPatch, type ParsedFile, type Severity,
+  type Finding, type FindingAgent, type FindingPatch, type ParsedFile, type Severity,
 } from "./scanner";
 import {
   fetchPullRequest, postPullRequestReview, callLLM, estimateCost,
-  extractJsonArray, extractJsonObject,
+  extractJsonObject,
   type PRMeta, type Provider, type InlineComment,
 } from "./external";
 import type { Fixture } from "../data/fixtures";
 
-export type AgentId = "orchestrator" | "style" | "security" | "tools" | "refactor" | "review";
+import { runSecurityPanel, SPECIALISTS } from "./securityPanel";
+
+/* the five threat-panel specialists (inj/secret/auth/supply/crypto) join the
+ * crew as first-class agent ids — see securityPanel.ts */
+export type AgentId = "orchestrator" | "tools" | "refactor" | "review" | FindingAgent;
 
 export type AuditInput =
   | { kind: "github"; owner: string; repo: string; pr: number; ref: string }
@@ -93,57 +97,8 @@ const SEV_BADGE: Record<Severity, string> = {
   critical: "🔴", high: "🟠", medium: "🟡", low: "🔵", info: "⚪",
 };
 
-/* ── LLM security audit ───────────────────────────────────── */
-
-interface LLMFindingRaw {
-  line: number; severity: Severity; confidence: number;
-  title: string; issue: string; recommendation: string; cwe?: string | null;
-}
-
-async function llmSecurityPass(
-  files: ParsedFile[], settings: Settings,
-  emit: Emit, cancelled: () => boolean,
-): Promise<{ findings: Finding[]; tokensIn: number; tokensOut: number }> {
-  const findings: Finding[] = [];
-  let tokensIn = 0, tokensOut = 0;
-  const system = [
-    "You are a senior application-security auditor reviewing a pull request.",
-    "Rules: report ONLY genuine issues on the ADDED lines, citing the exact line numbers given.",
-    "No style nits, no speculation about code that is not shown, no duplicates.",
-    "Respond with ONLY a JSON array. Each item:",
-    '{"line": <int>, "severity": "critical|high|medium|low|info", "confidence": <0..1>, "title": <str>, "issue": <str>, "recommendation": <str>, "cwe": <str|null>}',
-  ].join("\n");
-
-  for (const f of files.slice(0, 5)) {
-    if (cancelled()) break;
-    const added = f.added.slice(0, 220);
-    if (added.length === 0) continue;
-    const prompt = `File: ${f.path} (language: ${f.lang})\nAdded lines:\n` +
-      added.map((a) => `L${a.line}: ${a.text}`).join("\n");
-    emit({ kind: "log", agent: "security", text: `→ ${f.path}: ${added.length} added lines to ${settings.model}` });
-    const res = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model, system, prompt);
-    tokensIn += res.inputTokens;
-    tokensOut += res.outputTokens;
-    emit({ kind: "log", agent: "security", text: `← ${res.model}: ${res.inputTokens}+${res.outputTokens} tok` });
-    const raw = extractJsonArray<LLMFindingRaw>(res.text);
-    for (const r of raw) {
-      if (!Number.isFinite(r.line) || !r.title) continue;
-      const line = added.some((a) => a.line === r.line) ? r.line : added[0].line;
-      const sev: Severity = SEV_ORDER.includes(r.severity) ? r.severity : "medium";
-      findings.push({
-        id: `${f.path}:${line}:llm-${findings.length}`,
-        agent: "security", detector: "llm", severity: sev,
-        confidence: Math.min(0.97, Math.max(0.4, Number(r.confidence) || 0.6)),
-        file: f.path, line, title: r.title,
-        issue: r.issue || "", recommendation: r.recommendation || "",
-        excerpt: f.added.find((a) => a.line === line)?.text ?? "",
-        cwe: r.cwe || undefined,
-      });
-    }
-    emit({ kind: "log", agent: "security", text: `parsed ${raw.length} candidate finding(s) from ${f.path}` });
-  }
-  return { findings, tokensIn, tokensOut };
-}
+/* the generalist LLM security pass now lives in securityPanel.ts as five
+ * parallel domain specialists (injection · secrets · access · supply · crypto) */
 
 /* ── LLM patch generation ─────────────────────────────────── */
 
@@ -295,49 +250,41 @@ export async function runPipeline(
   stage(3);
   agent("tools", "running");
   agent("style", "running");
-  if (useLLM) agent("security", "running");
   await sleep(160);
 
   // deterministic engines (real, synchronous)
   let findings = scanFiles(files);
-  const ruleFindings = findings.length;
-  const secCount = findings.filter((f) => f.agent === "security").length;
+  const secRules = findings.filter((f) => f.agent === "security");
   const styCount = findings.filter((f) => f.agent === "style").length;
-  agent("tools", "done", secCount);
-  log("tools", `bandit/semgrep-style rules: ${secCount} hit(s) across ${files.length} file(s)`);
+  agent("tools", "done", secRules.length);
+  log("tools", `bandit/semgrep-style rules: ${secRules.length} hit(s) across ${files.length} file(s)`);
   agent("style", "done", styCount);
   log("style", `complexity + smell heuristics: ${styCount} hit(s)`);
   tick();
 
-  // LLM pass with corroboration merge
-  let tokensIn = 0, tokensOut = 0;
-  if (useLLM) {
-    try {
-      const llm = await llmSecurityPass(files, settings, emit, cancelled);
-      tokensIn = llm.tokensIn; tokensOut = llm.tokensOut;
-      let merged = 0, novel = 0;
-      for (const lf of llm.findings) {
-        const near = findings.find((rf) => rf.file === lf.file && Math.abs(rf.line - lf.line) <= 3 && rf.agent === "security");
-        if (near) {
-          near.detector = "hybrid";
-          near.confidence = Math.min(0.98, Math.max(near.confidence, lf.confidence) + 0.03);
-          merged++;
-        } else {
-          findings.push(lf);
-          novel++;
-        }
-      }
-      log("security", `${llm.findings.length} llm candidate(s): ${merged} corroborated rule hits, ${novel} novel`);
-      agent("security", "done", llm.findings.length);
-    } catch (err) {
-      log("security", `llm pass failed (${err instanceof Error ? err.message : err}) — deterministic findings stand`);
-      agent("security", "done", 0);
-    }
-  } else {
-    log("security", "heuristic mode — promoting corroborated rule hits only");
-    agent("security", "done", secCount);
-  }
-  emit({ kind: "state", patch: { llmModel: useLLM ? settings.model : null, tokensIn, tokensOut, costUsd: useLLM ? estimateCost(settings.model, tokensIn, tokensOut) : 0 } });
+  // five-specialist security panel — parallel LLM calls with per-domain
+  // corroboration, or offline CWE-domain delegation of the rule findings
+  const panel = await runSecurityPanel({
+    files, settings, useLLM, ruleFindings: secRules, cancelled,
+    agentStatus: (id, st, n) => agent(id, st, n),
+    log: (id, text) => log(id, text),
+  });
+  findings.push(...panel.findings);
+  const panelTotal = SPECIALISTS.reduce((n, s) => n + panel.perAgent[s.id].count, 0);
+  const panelCorr = SPECIALISTS.reduce((n, s) => n + panel.perAgent[s.id].corroborated, 0);
+  log("orchestrator", useLLM
+    ? `panel settled: ${panelTotal} specialist candidate(s) — ${panelCorr} corroborated by rules, ${panel.findings.length} novel`
+    : `panel settled: ${panelTotal} rule finding(s) delegated across ${SPECIALISTS.length} threat domains`);
+  emit({
+    kind: "state",
+    patch: {
+      detectorMode: useLLM ? "rules + 5-llm panel" : "deterministic rules",
+      llmModel: useLLM ? settings.model : null,
+      tokensIn: panel.tokensIn,
+      tokensOut: panel.tokensOut,
+      costUsd: useLLM ? estimateCost(settings.model, panel.tokensIn, panel.tokensOut) : 0,
+    },
+  });
 
   // stream findings into the UI (sorted, then revealed one by one)
   findings = [...findings].sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || b.confidence - a.confidence);
@@ -393,14 +340,15 @@ export async function runPipeline(
   const sharedSoFar: SharedSnapshot = {
     source: sourceLabel, sourceUrl, sha, title, author, base, head,
     files: files.length, additions, deletions,
-    detectorMode: useLLM ? "rules + llm" : "deterministic rules",
-    llmModel: useLLM ? settings.model : null, tokensIn, tokensOut,
-    costUsd: useLLM ? estimateCost(settings.model, tokensIn, tokensOut) : 0,
+    detectorMode: useLLM ? "rules + 5-llm panel" : "deterministic rules",
+    llmModel: useLLM ? settings.model : null,
+    tokensIn: panel.tokensIn, tokensOut: panel.tokensOut,
+    costUsd: useLLM ? estimateCost(settings.model, panel.tokensIn, panel.tokensOut) : 0,
     findings: findings.length, ...recount(findings), patches, risk: null, posted: null,
     elapsedMs: Math.round(performance.now() - t0),
   };
   const review = buildReview(findings, files, sharedSoFar, "");
-  log("review", `merged ${ruleFindings} deterministic + llm findings → ${review.issues} ranked`);
+  log("review", `merged ${secRules.length} deterministic + ${panel.findings.length} specialist findings → ${review.issues} ranked`);
   log("review", `verdict: ${review.overall.toUpperCase()} · ${review.headline}`);
   agent("review", "done", review.issues);
   emit({ kind: "review", review });

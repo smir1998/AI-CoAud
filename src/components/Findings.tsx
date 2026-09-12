@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { Finding } from "../analysis/scanner";
-import { SEV_META } from "../types";
+import { AGENT_META, SEV_META } from "../types";
 import { ChevronIcon, CpuIcon, FileCodeIcon, ShieldIcon, SparkIcon } from "./icons";
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
 const DETECTOR_LABEL: Record<Finding["detector"], { text: string; icon: ReactNode }> = {
   rule: { text: "deterministic rule", icon: <ShieldIcon className="h-3 w-3" /> },
   llm: { text: "llm audit", icon: <CpuIcon className="h-3 w-3" /> },
-  hybrid: { text: "rule + llm corroborated", icon: <SparkIcon className="h-3 w-3" /> },
+  hybrid: { text: "rule + specialist corroborated", icon: <SparkIcon className="h-3 w-3" /> },
 };
 
 export default function Findings({ findings, activeId, onPick }: Props) {
@@ -49,6 +49,12 @@ export default function Findings({ findings, activeId, onPick }: Props) {
               <span className="rounded border px-1.5 py-px font-mono text-[9.5px] font-bold tracking-wider"
                 style={{ color: sev.color, borderColor: `${sev.color}55`, background: `${sev.color}14` }}>
                 {sev.label}
+              </span>
+              <span
+                title={`${AGENT_META[f.agent].name} — raised by this agent`}
+                className="rounded border px-1.5 py-px font-mono text-[9px] font-bold tracking-widest"
+                style={{ color: AGENT_META[f.agent].color, borderColor: `${AGENT_META[f.agent].color}44`, background: `${AGENT_META[f.agent].color}0f` }}>
+                {AGENT_META[f.agent].short}
               </span>
               <button
                 onClick={(e) => { e.stopPropagation(); onPick(f.id); }}

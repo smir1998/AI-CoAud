@@ -28,9 +28,13 @@ export interface FindingPatch {
   source: "template" | "llm";
 }
 
+/* who owns a finding: the style agent, the general security bucket, or one
+ * of the five threat-panel specialists (see securityPanel.ts) */
+export type FindingAgent = "security" | "style" | "inj" | "secret" | "auth" | "supply" | "crypto";
+
 export interface Finding {
   id: string;
-  agent: "security" | "style";
+  agent: FindingAgent;
   detector: "rule" | "llm" | "hybrid";
   rule?: string;
   severity: Severity;

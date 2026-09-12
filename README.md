@@ -1,126 +1,217 @@
-# AI CoAudS
+# AI CoAudS - Agentic AI Code Audit System
 
-**Agentic, multi-agent code auditing for GitHub Pull Requests.**
-Deterministic scanners and LLM auditors check each other — only corroborated findings, with validated patches, get posted back to the PR.
+A modern, agentic AI-powered code audit system that uses autonomous agents to analyze code for security vulnerabilities, code quality issues, and best practices.
+
+## ✨ Features
+
+- 🤖 **Agentic AI**: Autonomous agents that reason, plan, and execute code audits
+- 🔍 **Real-time Visualization**: Watch the AI think, act, observe, and reflect in real-time
+- 🎨 **Modern UI**: Beautiful glassmorphism design with smooth animations
+- 📊 **5-Specialist Security Panel**: Specialized agents for different security domains
+- 🔄 **ReAct Pattern**: Implements the Reason-Act-Observe-Reflect agent loop
+- 💾 **Simulation Mode**: Works without API keys using intelligent simulation
+- 🌐 **Multi-Provider Support**: Works with Anthropic Claude and OpenAI GPT models
+- ⚡ **Streaming Responses**: Real-time token-by-token output
+- 🎯 **Tool Use**: Agents can call tools to gather information and execute actions
+- 🐙 **GitHub Integration**: Audit real GitHub repositories, PRs, and files directly
+
+## 🚀 Quick Start
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Start the development server:
+```bash
+npm run dev
+```
+
+3. Open your browser to `http://localhost:5173`
+
+## 📖 Usage
+
+### Without API Key (Simulation Mode)
+
+The system works out of the box with intelligent simulation mode. Simply:
+1. Enter a task (e.g., "Audit this React component for security vulnerabilities")
+2. Paste code context
+3. Click "Run Agent"
+4. Watch the AI agent think, act, and analyze in real-time
+
+### With API Key (Live LLM Mode)
+
+For real AI-powered analysis:
+1. Click the settings icon in the top right
+2. Enter your Anthropic or OpenAI API key
+3. Select your preferred model
+4. Run audits with real LLM-powered agents
+
+### 🐙 GitHub Integration (Audit Real Code)
+
+Audit actual GitHub repositories, pull requests, and files:
+
+1. **Switch to "GitHub Repository/PR" mode** in the console
+2. **Enter a GitHub URL**:
+   - Pull Request: `https://github.com/owner/repo/pull/123`
+   - Repository: `https://github.com/owner/repo`
+   - File: `https://github.com/owner/repo/blob/main/src/file.ts`
+3. **Click "Fetch"** to load the repository/PR
+4. **Select files** to audit from the file browser
+5. **Task auto-generates** based on the GitHub metadata
+6. **Click "Run Agent"** to audit the real code!
+
+**Features:**
+- ✅ No authentication required for public repos
+- ✅ Browse and select specific files
+- ✅ View diffs and changes in PRs
+- ✅ Automatic task generation
+- ✅ Full file content fetching
+
+**Rate Limits:**
+- 60 requests/hour without authentication
+- 5,000 requests/hour with GitHub token (optional)
+
+See [GitHub Integration Guide](GITHUB_INTEGRATION.md) for detailed usage.
+
+## 🏗️ Architecture
+
+### Agent Runtime
+
+The system uses a **ReAct (Reason-Act-Observe-Reflect)** pattern:
+
+1. **Think**: Agent analyzes the task and plans approach
+2. **Act**: Agent calls tools to gather information
+3. **Observe**: Agent analyzes tool results
+4. **Reflect**: Agent evaluates findings and decides next steps
+
+This creates a continuous loop of intelligent analysis until the task is complete.
+
+### 5-Specialist Security Panel
+
+- **Injection Hunter**: SQL injection, command injection, XSS, template injection
+- **Secrets Sentinel**: Hardcoded credentials, API keys, tokens, private keys
+- **Access Auditor**: Authentication, authorization, IDOR, session management
+- **Supply-Chain Auditor**: Dependencies, deserialization, package vulnerabilities
+- **Crypto & Transport Auditor**: Weak cryptography, TLS/SSL issues, secure communication
+
+### Technology Stack
+
+- **Frontend**: React 19, TypeScript, Tailwind CSS 4
+- **Build Tool**: Vite 7
+- **AI Integration**: Anthropic Claude, OpenAI GPT
+- **Styling**: Glassmorphism, modern animations, gradient effects
+- **State Management**: React hooks with streaming updates
+- **Agent Pattern**: ReAct with tool use and reflection
+
+## 🛠️ Development
+
+### Project Structure
 
 ```
-GitHub PR ──▶ webhook ──▶ orchestrator ──▶ security · style · SAST (parallel)
-                                    ──▶ refactor ──▶ review ──▶ validation ──▶ PR review
+src/
+├── agents/
+│   ├── runtime.ts          # Agentic AI runtime (ReAct loop)
+│   ├── mantis/             # Security specialist agents
+│   └── tools/              # Tool implementations
+├── components/
+│   ├── Console.tsx         # Modern agentic console UI
+│   ├── Architecture.tsx    # System architecture view
+│   ├── Codebase.tsx        # Code browser
+│   └── Readme.tsx          # Documentation viewer
+├── config.ts               # Configuration
+├── App.tsx                 # Main application
+└── index.css               # Modern CSS with glassmorphism
 ```
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run typecheck` - Run TypeScript type checking
+
+## ⚙️ Configuration
+
+Edit `src/config.ts` to customize:
+
+```typescript
+export const CONFIG = {
+  llm: {
+    provider: "anthropic",  // or "openai"
+    model: "claude-3-5-sonnet-20241022",
+    apiKey: "",             // Set via UI or environment
+    maxTokens: 4096,
+    temperature: 0.3,
+  },
+  agents: {
+    maxSteps: 10,
+    enableSimulation: true,
+  },
+};
+```
+
+## 🔒 Security
+
+- API keys are stored in browser memory only (never persisted)
+- All LLM calls are made directly from the browser
+- No backend server required for basic functionality
+- Simulation mode works completely offline
+- CORS-enabled API calls for direct browser integration
+
+## 🌍 Browser Support
+
+- Chrome/Edge 90+
+- Firefox 88+
+- Safari 14+
+
+## 📦 Build Output
+
+```
+dist/
+├── index.html                    # Entry point
+└── assets/
+    ├── index-[hash].css          # Main styles (glassmorphism)
+    ├── index-[hash].js           # Main bundle
+    ├── Console-[hash].js         # Console component (lazy loaded)
+    ├── Architecture-[hash].js    # Architecture view (lazy loaded)
+    ├── Codebase-[hash].js        # Code browser (lazy loaded)
+    └── Readme-[hash].js          # Documentation (lazy loaded)
+```
+
+## 🎨 Design System
+
+- **Glassmorphism**: Frosted glass effects with backdrop blur
+- **Gradient Text**: Beautiful gradient headings
+- **Smooth Animations**: Fade, slide, pulse effects
+- **Modern Color Palette**: Dark theme with vibrant accents
+- **Responsive Design**: Works on all screen sizes
+
+## 📝 License
+
+MIT
+
+## 🤝 Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+## 🙏 Acknowledgments
+
+- Inspired by Google's Mantis security review framework
+- Built with modern web technologies
+- Powered by advanced AI language models
+- Design inspired by modern SaaS applications
+
+## 🎯 Roadmap
+
+- [ ] Multi-agent collaboration
+- [ ] Custom tool creation
+- [ ] Export audit reports
+- [ ] Integration with CI/CD pipelines
+- [ ] Support for more LLM providers
+- [ ] Advanced visualization options
+- [ ] Collaborative auditing features
 
 ---
 
-## Live
-
-👉 **https://smir1998.github.io/AI-CoAud/**
-
-Deployed automatically on every push to `main` by
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — GitHub Pages, zero servers.
-The workflow builds with the correct subpath base and stamps the live URL into the console
-footer, so a deployed build is visibly different from a local one.
-
-> First time only: repo **Settings → Pages → Build and deployment → Source → GitHub Actions**.
-> The Actions run page then shows the live URL directly.
-
-## Why it exists
-
-- Static scanners (Semgrep, Bandit, Ruff) flood reviewers with noise.
-- LLM-only reviewers confidently hallucinate vulnerabilities that don't exist.
-- **AI CoAudS makes the two verify each other.** An LLM finding must either be corroborated by a deterministic tool hit or clear a high confidence bar; every generated patch is validated before it is allowed near the PR.
-
-## What you get
-
-- **Real PR ingestion** — GitHub REST API (`/pulls/{n}`, `/pulls/{n}/files`), any public repo, or paste a unified diff directly.
-- **Deterministic engine** — ~25 security detectors (SQLi via interpolation, hardcoded secrets & AWS keys, `eval`/`exec`, `shell=True`, MD5, pickle/yaml deserialization, disabled TLS verification, debug mode, path traversal, weak PRNGs, JWT bypass, command injection, XSS…) plus style heuristics (complexity, function length, bare/swallowed excepts, mutable defaults, duplication, naming).
-- **Live LLM agents** — Anthropic or OpenAI keys (stored locally, sent only to the provider). Security findings are corroborated against rule hits or surfaced as novel; the refactor agent patches what no template covers.
-- **Validated patches** — target lines must exist, replacements must be non-empty, brackets must balance. Rejections are logged honestly.
-- **Real posting** — with a GitHub token the review is posted via `/pulls/{n}/reviews` with inline comments, `REQUEST_CHANGES` or `APPROVE`.
-
-## The agents
-
-| Agent | Job |
-|---|---|
-| Orchestrator | Fetches PR + diff, owns shared state, dispatches, aggregates |
-| Security | Injection, secrets, auth, deserialization, dependency risk |
-| Style | Smells, complexity, naming, duplication |
-| Refactor | Behavior-preserving patches with rationale |
-| Review | Dedupe, severity (Critical→Info), final markdown review |
-| Validation | Patch applicability, findings on changed lines, comment limits |
-
-## Quickstart — browser console
-
-```bash
-npm install
-npm run dev        # local dev server
-npm run build      # production bundle in dist/
-```
-
-Open the **live console**, pick a sample PR or paste `owner/repo#123`. Add keys in the ⚙ drawer to enable LLM agents and real review posting.
-
-## Repository layout
-
-```
-├── src/                    audit console (React + Vite + Tailwind)
-├── backend/                webhook service — FastAPI + CrewAI + scanners
-│   ├── server.py           HMAC-verified webhook, bounded worker pool
-│   ├── pipeline.py         orchestrator: parallel audit → review → post
-│   ├── agents.py           security / style / refactor / review crew
-│   ├── state.py            AuditState + Redis store (in-memory fallback)
-│   ├── github_client.py    diffs + chunked review posting
-│   ├── tools.py            semgrep · bandit · ruff · pip-audit runners
-│   ├── validation.py       patch-parse & apply gate
-│   └── Dockerfile          non-root, healthchecked
-├── deploy/                 Dockerfile.web + production nginx (CSP-locked)
-├── docker-compose.yml      web + api + redis, health-gated startup
-├── .github/workflows/      typecheck · python gate · signed ghcr images
-└── DEPLOY.md               local / VPS / Fly / static-host runbooks
-```
-
-## Quickstart — Python service
-
-The service deploys with:
-
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, LLM keys
-uvicorn server:app --port 8000
-```
-
-or the full stack: `cp backend/.env.example .env && docker compose up --build`
-(console on `:8080`, webhook on `:8000`, see [DEPLOY.md](DEPLOY.md) for TLS,
-webhook wiring and hosting options).
-
-## Configuration
-
-| Setting | Used for |
-|---|---|
-| GitHub token | fetching private-adjacent rate limits, **posting reviews** |
-| Anthropic / OpenAI key | LLM security + refactor agents |
-| Rules-only mode | runs with zero keys — deterministic engine only |
-
-Keys live in `localStorage` and are sent only to the respective provider or `api.github.com`.
-
-## Sample review
-
-```markdown
-## 🤖 AI CoAudS Review — overall risk: **HIGH**
-
-### Security — HIGH · auth.py:21
-SQL injection: user input reaches cursor.execute via f-string.  confidence 96%
-> fix: parameterize → cursor.execute("SELECT … WHERE name = %s", (username,))
-
-### Patches validated: 4/4 · files: 3 · findings: 10
-```
-
-## Roadmap
-
-`v2.0` MCP tool server · strict structured outputs — `v2.1` tree-sitter context, SARIF → GitHub Code Scanning — `v2.2` gVisor patch sandbox, token ledger + model routing — `v2.3` embedding cache for unchanged hunks — `v2.4` eval harness, A2A interop, self-editing review comments.
-
-## Notes
-
-- Findings are advisory; severity is confidence-weighted, CVSS-aligned.
-- Nothing is pushed to a branch without human approval — reviews and comments only.
-
-MIT
+**Built with ❤️ using React, TypeScript, and AI**

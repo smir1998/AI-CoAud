@@ -1,149 +1,230 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { CODE_FILES } from "../data/codebase";
-import { CONFIG } from "../config";
-import { CheckIcon, CodeIcon, CopyIcon, FileCodeIcon } from "./icons";
+// AI CoAudS - Codebase Component
+// Displays the implementation code and file structure
 
-const KW = new Set([
-  "def", "class", "import", "from", "return", "if", "elif", "else", "for",
-  "while", "in", "with", "as", "try", "except", "finally", "raise", "async",
-  "await", "lambda", "pass", "break", "continue", "yield", "not", "and", "or",
-  "is", "None", "True", "False", "global", "assert", "del",
-]);
+import { useState } from 'react';
 
-function keywords(seg: string, prefix: string): ReactNode {
-  return seg.split(/(@\w+|\b[A-Za-z_]\w*\b)/g).map((w, i) => {
-    if (w.startsWith("@")) return <span key={`${prefix}${i}`} className="text-cyanx">{w}</span>;
-    if (KW.has(w)) return <span key={`${prefix}${i}`} className="text-orchid">{w}</span>;
-    if (/^\d+(\.\d+)?$/.test(w)) return <span key={`${prefix}${i}`} className="text-rosex">{w}</span>;
-    return <span key={`${prefix}${i}`}>{w}</span>;
-  });
+interface CodeFile {
+  path: string;
+  language: string;
+  description: string;
+  code: string;
 }
 
-function pyLine(line: string, key: number): ReactNode {
-  const parts: ReactNode[] = [];
-  const re = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|#.*)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let k = 0;
-  while ((m = re.exec(line)) !== null) {
-    if (m.index > last) parts.push(<span key={`c${k++}`}>{keywords(line.slice(last, m.index), `${key}a${k}`)}</span>);
-    const tok = m[0];
-    parts.push(
-      <span key={`t${k++}`} className={tok.startsWith("#") ? "italic text-ink-500" : "text-[#8fd6a8]"}>{tok}</span>
+const CODEBASE_FILES: CodeFile[] = [
+  {
+    path: 'backend/server.py',
+    language: 'python',
+    description: 'FastAPI webhook server with HMAC verification',
+    code: `from fastapi import FastAPI, Request, HTTPException
+import hmac
+import hashlib
+
+app = FastAPI(title="AI CoAudS")
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    # Verify GitHub webhook signature
+    signature = request.headers.get("X-Hub-Signature-256")
+    body = await request.body()
+    
+    if not verify_signature(body, signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    # Process webhook
+    payload = await request.json()
+    return {"status": "accepted"}
+
+def verify_signature(body: bytes, signature: str) -> bool:
+    secret = settings.github_webhook_secret.encode()
+    expected = "sha256=" + hmac.new(
+        secret, body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)`,
+  },
+  {
+    path: 'backend/pipeline.py',
+    language: 'python',
+    description: 'Multi-agent orchestration pipeline',
+    code: `from crewai import Agent, Task, Crew, Process
+
+class AuditPipeline:
+    def __init__(self):
+        self.agents = self._create_agents()
+    
+    def _create_agents(self):
+        orchestrator = Agent(
+            role="Orchestrator",
+            goal="Coordinate security audit",
+            backstory="Expert at coordinating..."
+        )
+        
+        security_panel = [
+            Agent(role="Injection Hunter", ...),
+            Agent(role="Secrets Sentinel", ...),
+            Agent(role="Access Auditor", ...),
+            Agent(role="Supply-Chain Auditor", ...),
+            Agent(role="Crypto & Transport", ...),
+        ]
+        
+        return [orchestrator, *security_panel]
+    
+    async def run(self, pr_diff: str):
+        tasks = self._create_tasks(pr_diff)
+        crew = Crew(
+            agents=self.agents,
+            tasks=tasks,
+            process=Process.sequential
+        )
+        return await crew.kickoff_async()`,
+  },
+  {
+    path: 'src/components/Console.tsx',
+    language: 'typescript',
+    description: 'Live audit console UI component',
+    code: `export function Console() {
+  const [prUrl, setPrUrl] = useState('');
+  const [audits, setAudits] = useState<AuditResult[]>([]);
+  
+  const startAudit = async () => {
+    // Parse PR URL and start audit
+    const match = prUrl.match(
+      /github\\.com\\/([^/]+)\\/([^/]+)\\/pull\\/(\\d+)/
     );
-    last = m.index + tok.length;
-    if (tok.startsWith("#")) break;
-  }
-  if (last < line.length) parts.push(<span key={`c${k++}`}>{keywords(line.slice(last), `${key}b${k}`)}</span>);
-  return <span key={key}>{parts}</span>;
-}
-
-function plainLine(line: string, key: number): ReactNode {
-  const hash = line.indexOf("#");
-  if (hash >= 0)
-    return (
-      <span key={key}>
-        <span>{line.slice(0, hash)}</span>
-        <span className="italic text-ink-500">{line.slice(hash)}</span>
-      </span>
-    );
-  return <span key={key}>{line}</span>;
-}
-
-export default function Codebase() {
-  const [idx, setIdx] = useState(0);
-  const [copied, setCopied] = useState(false);
-  const file = CODE_FILES[idx];
-
-  const lines = useMemo(() => file.code.replace(/\n$/, "").split("\n"), [file]);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(file.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    } catch {
-      /* noop */
-    }
+    
+    // Trigger backend audit
+    const result = await triggerAudit(match);
+    setAudits([result, ...audits]);
   };
+  
+  return (
+    <div className="console">
+      <input
+        value={prUrl}
+        onChange={(e) => setPrUrl(e.target.value)}
+        placeholder="GitHub PR URL"
+      />
+      <button onClick={startAudit}>
+        Start Audit
+      </button>
+      <AuditList audits={audits} />
+    </div>
+  );
+}`,
+  },
+  {
+    path: '.github/workflows/ci.yml',
+    language: 'yaml',
+    description: 'GitHub Actions CI/CD pipeline',
+    code: `name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+      
+      - name: Run tests
+        run: pytest backend/tests/
+      
+      - name: Security scan
+        run: |
+          pip-audit -r backend/requirements.txt
+          bandit -r backend/
+  
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      
+      - name: Build
+        run: npm run build`,
+  },
+];
+
+export function Codebase() {
+  const [selectedFile, setSelectedFile] = useState<CodeFile | null>(null);
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] space-y-4 px-3 pb-6 lg:px-5">
-      <header className="anim-rise panel flex flex-wrap items-end justify-between gap-3 px-5 py-4">
-        <div>
-          <p className="panel-head flex items-center gap-2"><CodeIcon className="h-3.5 w-3.5 text-emx" /> reference implementation</p>
-          <h2 className="font-display pt-1 text-[24px] font-bold tracking-wide text-ink-100">ai-coauds / service</h2>
-          <p className="max-w-2xl pt-1 text-[13px] leading-relaxed text-ink-300">
-            The real, deployable codebase in this repository — loaded byte-for-byte via <span className="font-mono text-[12px] text-cyanx">?raw</span>:
-            FastAPI webhook server, CrewAI crew, Redis-backed shared state, SAST runners, the validation gate, and the full container + CI setup.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 font-mono text-[10.5px] text-ink-400">
-          <span className="chip border-ink-600 text-ink-300">{CODE_FILES.length} files</span>
-          <span className="chip border-ink-600 text-emx">v{CONFIG.version}</span>
-        </div>
-      </header>
-
-      <div className="anim-rise grid grid-cols-1 gap-3 lg:grid-cols-12" style={{ animationDelay: "100ms" }}>
-        {/* file tree */}
-        <nav className="panel overflow-hidden lg:col-span-3">
-          <p className="panel-head border-b border-ink-700/60 bg-ink-900/60 px-3 py-2">files</p>
-          <ul className="p-1.5">
-            {CODE_FILES.map((f, i) => (
-              <li key={f.name}>
-                <button
-                  onClick={() => setIdx(i)}
-                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-all ${
-                    i === idx ? "bg-orchid/[0.09] text-orchid shadow-[inset_2px_0_0_#38bdf8]" : "text-ink-300 hover:bg-ink-800/70 hover:text-ink-100"
-                  }`}
-                >
-                  <FileCodeIcon className={`h-3.5 w-3.5 shrink-0 ${i === idx ? "text-orchid" : "text-ink-500"}`} />
-                  <span className="min-w-0">
-                    <span className="block truncate font-mono text-[12px] font-medium">{f.name}</span>
-                    <span className="block truncate text-[10px] text-ink-500">{f.note}</span>
-                  </span>
-                </button>
-              </li>
+    <div className="flex h-full">
+      {/* File List */}
+      <div className="w-80 border-r border-ink-700/50 overflow-y-auto">
+        <div className="p-4">
+          <h3 className="font-display text-sm font-semibold text-ink-400 uppercase tracking-wider mb-3">
+            Implementation Files
+          </h3>
+          <div className="space-y-2">
+            {CODEBASE_FILES.map((file) => (
+              <button
+                key={file.path}
+                onClick={() => setSelectedFile(file)}
+                className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                  selectedFile?.path === file.path
+                    ? 'bg-orchid/10 border-orchid/50'
+                    : 'bg-ink-800/50 border-ink-700/50 hover:bg-ink-800'
+                }`}
+              >
+                <div className="font-mono text-sm text-ink-100 mb-1">
+                  {file.path}
+                </div>
+                <div className="text-xs text-ink-400">
+                  {file.description}
+                </div>
+              </button>
             ))}
-          </ul>
-          <div className="border-t border-ink-700/60 p-3">
-            <p className="font-mono text-[10px] leading-relaxed text-ink-500">
-              $ git clone github.com/acme/ai-coauds<br />
-              $ docker compose up --build<br />
-              $ curl -X POST :8000/webhook …
-            </p>
           </div>
-        </nav>
+        </div>
+      </div>
 
-        {/* code pane */}
-        <section className="panel flex min-h-[560px] flex-col overflow-hidden lg:col-span-9">
-          <div className="flex items-center gap-2 border-b border-ink-700/60 bg-ink-900/70 px-3 py-2">
-            <span className="font-mono text-[12px] font-semibold text-ink-100">{file.name}</span>
-            <span className="chip border-ink-600 text-ink-400">{file.lang}</span>
-            <span className="hidden truncate font-mono text-[10px] text-ink-500 sm:block">— {file.note}</span>
-            <button
-              onClick={copy}
-              className="ml-auto flex items-center gap-1.5 rounded-md border border-ink-600 bg-ink-800 px-2.5 py-1 font-mono text-[10.5px] text-ink-200 transition-colors hover:border-emx/60 hover:text-emx"
-            >
-              {copied ? <CheckIcon className="h-3 w-3 text-emx" /> : <CopyIcon className="h-3 w-3" />}
-              {copied ? "copied" : "copy"}
-            </button>
-          </div>
-          <div className="scroll-thin min-h-0 flex-1 overflow-auto py-2 font-mono text-[12px] leading-[1.65]">
-            {lines.map((ln, i) => (
-              <div key={i} className="flex px-0 transition-colors hover:bg-ink-800/40">
-                <span className="w-11 shrink-0 pr-3 text-right text-[10.5px] text-ink-600 select-none">{i + 1}</span>
-                <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre pr-4 text-ink-200">
-                  {file.lang === "python" ? pyLine(ln, i) : plainLine(ln, i)}
-                </pre>
+      {/* Code Viewer */}
+      <div className="flex-1 overflow-y-auto">
+        {selectedFile ? (
+          <div className="p-6">
+            <div className="mb-4">
+              <h3 className="font-display text-xl font-bold text-ink-100 mb-2">
+                {selectedFile.path}
+              </h3>
+              <p className="text-sm text-ink-400">
+                {selectedFile.description}
+              </p>
+              <div className="mt-2 inline-block px-2 py-1 bg-ink-800 rounded text-xs font-mono text-ink-300">
+                {selectedFile.language}
               </div>
-            ))}
+            </div>
+            <pre className="bg-ink-900 border border-ink-700/50 rounded-lg p-4 overflow-x-auto">
+              <code className="text-sm font-mono text-ink-200">
+                {selectedFile.code}
+              </code>
+            </pre>
           </div>
-          <div className="border-t border-ink-700/60 bg-ink-900/70 px-3 py-1.5 font-mono text-[10px] text-ink-500">
-            {lines.length} lines · {file.lang === "python" ? "utf-8 · python" : file.lang} · ai-coauds@{CONFIG.version} · loaded from repo via ?raw
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-ink-500">
+              <p className="text-lg mb-2">No file selected</p>
+              <p className="text-sm">Select a file from the list to view its code</p>
+            </div>
           </div>
-        </section>
+        )}
       </div>
     </div>
   );
 }
+
+export default Codebase;
