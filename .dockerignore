@@ -1,0 +1,18 @@
+# ── AI CoAudS — Docker build-context filter ──────────────────────────────
+# CRITICAL: the web bundle inlines repo files at build time via Vite ?raw
+# imports (src/data/codebase.ts + the README import in Readme.tsx). These
+# paths MUST remain in the context or `npm run build` fails inside Docker:
+#
+#   backend/**  deploy/**  .github/workflows/**  docker-compose.yml  README.md
+#
+# Only exclude paths proven unused at build time. Patterns that could match
+# a same-named file deeper in the tree are anchored with a leading "/" —
+# e.g. unanchored `.env.*` would also swallow backend/.env.example, which
+# IS a ?raw import.
+
+node_modules
+dist
+.git
+*.log
+/.env
+/.env.*
