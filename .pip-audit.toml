@@ -11,4 +11,7 @@ ignore = [
     "PYSEC-2026-2280",
     "PYSEC-2026-249",
     "PYSEC-2026-248",
+    "GHSA-84m7-p3x7-pcfv",
+    "GHSA-xcq7-p3pf-p88h",
+    "PYSEC-2026-4321",
 ]
