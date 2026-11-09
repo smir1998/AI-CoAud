@@ -13,6 +13,7 @@ import {
   extractJsonArray, extractJsonObject,
   type PRMeta, type Provider, type InlineComment,
 } from "./external";
+import { CONFIG } from "../config";
 import type { Fixture } from "../data/fixtures";
 
 export type AgentId = "orchestrator" | "style" | "security" | "tools" | "refactor" | "review";
@@ -32,6 +33,7 @@ export interface Settings {
 export interface SharedSnapshot {
   source: string;
   sourceUrl: string | null;
+  coverageNote: string | null;
   sha: string;
   title: string;
   author: string;
@@ -93,6 +95,11 @@ const SEV_BADGE: Record<Severity, string> = {
   critical: "🔴", high: "🟠", medium: "🟡", low: "🔵", info: "⚪",
 };
 
+export function selectReviewEvent(overall: string, partialCoverage: boolean): "APPROVE" | "REQUEST_CHANGES" | "COMMENT" {
+  if (partialCoverage) return "COMMENT";
+  return overall === "high" ? "REQUEST_CHANGES" : "APPROVE";
+}
+
 /* ── LLM security audit ───────────────────────────────────── */
 
 interface LLMFindingRaw {
@@ -102,7 +109,7 @@ interface LLMFindingRaw {
 
 async function llmSecurityPass(
   files: ParsedFile[], settings: Settings,
-  emit: Emit, cancelled: () => boolean,
+  emit: Emit, cancelled: () => boolean, signal?: AbortSignal,
 ): Promise<{ findings: Finding[]; tokensIn: number; tokensOut: number }> {
   const findings: Finding[] = [];
   let tokensIn = 0, tokensOut = 0;
@@ -121,7 +128,8 @@ async function llmSecurityPass(
     const prompt = `File: ${f.path} (language: ${f.lang})\nAdded lines:\n` +
       added.map((a) => `L${a.line}: ${a.text}`).join("\n");
     emit({ kind: "log", agent: "security", text: `→ ${f.path}: ${added.length} added lines to ${settings.model}` });
-    const res = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model, system, prompt);
+    const res = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model, system, prompt, signal);
+    if (cancelled()) break;
     tokensIn += res.inputTokens;
     tokensOut += res.outputTokens;
     emit({ kind: "log", agent: "security", text: `← ${res.model}: ${res.inputTokens}+${res.outputTokens} tok` });
@@ -151,13 +159,13 @@ async function llmSecurityPass(
 /* ── LLM patch generation ─────────────────────────────────── */
 
 async function llmPatch(
-  finding: Finding, file: ParsedFile, settings: Settings,
+  finding: Finding, file: ParsedFile, settings: Settings, signal?: AbortSignal,
 ): Promise<FindingPatch | null> {
   const system = "You refactor code to fix a confirmed audit finding while preserving behavior. Respond with ONLY JSON: " +
     '{"before": "<exact line(s) to replace, copied verbatim from the listing>", "after": "<replacement code>", "note": "<one sentence: why safer/cleaner>"}';
   const listing = file.added.map((a) => `L${a.line}: ${a.text}`).join("\n");
   const prompt = `File: ${finding.file}\nFinding (line ${finding.line}): ${finding.title} — ${finding.issue}\nFix guidance: ${finding.recommendation}\n\nAdded lines:\n${listing}`;
-  const res = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model, system, prompt);
+  const res = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model, system, prompt, signal);
   const obj = extractJsonObject<{ before: string; after: string; note: string }>(res.text);
   if (!obj || !obj.before || !obj.after) return null;
   return { before: obj.before, after: obj.after, note: obj.note || "LLM-generated fix", source: "llm" };
@@ -171,9 +179,9 @@ function buildReview(findings: Finding[], files: ParsedFile[], shared: SharedSna
   const ranked = [...findings].sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || b.confidence - a.confidence);
   const top = ranked[0];
   const headline = top ? `${top.title} (${top.file}:${top.line})` : "No issues found in changed lines";
-  const summary = total === 0
+  const summary = `${shared.coverageNote ? `Partial coverage: ${shared.coverageNote} ` : ""}${total === 0
     ? `Clean audit across ${files.length} file(s): the deterministic engine and ${shared.detectorMode} found nothing actionable in the changed lines.`
-    : `Top priority: ${headline}. ${counts.high + counts.critical} high-or-critical item(s) should block the merge; suggested fixes are attached where a safe transformation exists.`;
+    : `Top priority: ${headline}. ${counts.high + counts.critical} high-or-critical item(s) should block the merge; suggested fixes are attached where a safe transformation exists.`}`;
 
   const lines: string[] = [
     `## 🤖 AI CoAudS Review — overall risk: **${overall.toUpperCase()}**`,
@@ -186,6 +194,7 @@ function buildReview(findings: Finding[], files: ParsedFile[], shared: SharedSna
     "### Findings",
     "",
   ];
+  if (shared.coverageNote) lines.splice(2, 0, `> **Partial coverage:** ${shared.coverageNote}`, "");
   for (const f of ranked.slice(0, 12)) {
     lines.push(`${SEV_BADGE[f.severity]} **${f.severity.toUpperCase()}** · \`${f.file}:${f.line}\` · ${f.title}`);
     lines.push(`> ${f.issue}`);
@@ -210,7 +219,9 @@ function buildReview(findings: Finding[], files: ParsedFile[], shared: SharedSna
 
 export async function runPipeline(
   input: AuditInput, settings: Settings, emit: Emit, cancelled: () => boolean,
+  signal?: AbortSignal,
 ): Promise<void> {
+  const isCancelled = () => cancelled() || signal?.aborted === true;
   const t0 = performance.now();
   const tick = () => emit({ kind: "state", patch: { elapsedMs: Math.round(performance.now() - t0) } });
   const log = (agent: AgentId, text: string) => emit({ kind: "log", agent, text });
@@ -226,6 +237,7 @@ export async function runPipeline(
   let title = "Pasted diff";
   let author = "you";
   let base = "—", head = "—";
+  let coverageNote: string | null = null;
 
   /* stage 1 — webhook received */
   stage(0);
@@ -251,15 +263,28 @@ export async function runPipeline(
   log("orchestrator", "GET pulls/{n} + pulls/{n}/files — metadata, patches, head sha");
   try {
     if (input.kind === "github") {
-      const data = await fetchPullRequest(input.owner, input.repo, input.pr);
+      const data = await fetchPullRequest(input.owner, input.repo, input.pr, signal);
       meta = data.meta;
       sha = data.meta.sha.slice(0, 12); title = data.meta.title; author = data.meta.author;
       base = data.meta.base; head = data.meta.head; sourceUrl = data.meta.url;
+      const coverageNotes: string[] = [];
+      if (data.partialCoverage) {
+        coverageNotes.push(`Only the first ${data.files.length} changed files were audited because this PR exceeds the ${CONFIG.limits.maxFilesPerAudit}-file limit.`);
+      }
+      let skippedFiles = 0;
       for (const f of data.files) {
-        if (!f.patch) { log("orchestrator", `skip ${f.path} (binary or rename-only)`); continue; }
+        if (!f.patch) {
+          skippedFiles++;
+          log("orchestrator", `skip ${f.path} (GitHub did not provide a text patch)`);
+          continue;
+        }
         files.push(...parseUnifiedDiff(f.patch, f.path));
       }
+      if (skippedFiles) coverageNotes.push(`${skippedFiles} changed file(s) had no text patch and could not be analyzed.`);
+      coverageNote = coverageNotes.length ? coverageNotes.join(" ") : null;
+      if (coverageNote) log("orchestrator", `⚠ ${coverageNote}`);
       log("orchestrator", `fetched ${data.files.length} file(s) · head ${sha}`);
+      emit({ kind: "state", patch: { coverageNote } });
     } else {
       const text = input.kind === "diff" ? input.text : input.fixture.diff;
       files = parseUnifiedDiff(text);
@@ -267,11 +292,12 @@ export async function runPipeline(
       log("orchestrator", `parsed ${files.length} file(s) from unified diff`);
     }
   } catch (err) {
+    if (isCancelled()) return;
     emit({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     agent("orchestrator", "done");
     return;
   }
-  if (cancelled()) return;
+  if (isCancelled()) return;
   const additions = files.reduce((s, f) => s + f.additions, 0);
   const deletions = files.reduce((s, f) => s + f.deletions, 0);
   emit({ kind: "files", files });
@@ -316,7 +342,8 @@ export async function runPipeline(
   let tokensIn = 0, tokensOut = 0;
   if (useLLM) {
     try {
-      const llm = await llmSecurityPass(files, settings, emit, cancelled);
+      const llm = await llmSecurityPass(files, settings, emit, isCancelled, signal);
+      if (isCancelled()) return;
       tokensIn = llm.tokensIn; tokensOut = llm.tokensOut;
       let merged = 0, novel = 0;
       for (const lf of llm.findings) {
@@ -333,6 +360,7 @@ export async function runPipeline(
       log("security", `${llm.findings.length} llm candidate(s): ${merged} corroborated rule hits, ${novel} novel`);
       agent("security", "done", llm.findings.length);
     } catch (err) {
+      if (isCancelled()) return;
       log("security", `llm pass failed (${err instanceof Error ? err.message : err}) — deterministic findings stand`);
       agent("security", "done", 0);
     }
@@ -345,7 +373,7 @@ export async function runPipeline(
   // stream findings into the UI (sorted, then revealed one by one)
   findings = [...findings].sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || b.confidence - a.confidence);
   for (const f of findings) {
-    if (cancelled()) return;
+    if (isCancelled()) return;
     emit({ kind: "finding", finding: f });
     await sleep(90);
   }
@@ -359,19 +387,23 @@ export async function runPipeline(
   const patchable = findings.filter((f) => ["critical", "high", "medium"].includes(f.severity));
   let patches = 0;
   for (const f of patchable.slice(0, 5)) {
-    if (cancelled()) return;
+    if (isCancelled()) return;
     const file = files.find((x) => x.path === f.file);
     if (!file) continue;
     let patch = f.patch;
     if (!patch && useLLM) {
       try {
         log("refactor", `requesting ${settings.model} patch for ${f.file}:${f.line}`);
-        patch = (await llmPatch(f, file, settings)) ?? undefined;
+        patch = (await llmPatch(f, file, settings, signal)) ?? undefined;
+        if (isCancelled()) return;
         if (patch) {
           const v = validatePatch(file, patch);
           if (!v.ok) { log("refactor", `llm patch rejected — ${v.reason}`); patch = undefined; }
         }
-      } catch { patch = undefined; }
+      } catch {
+        if (isCancelled()) return;
+        patch = undefined;
+      }
     }
     if (!patch) {
       log("refactor", `no safe transformation for ${f.rule ?? f.title} — manual fix recommended`);
@@ -395,6 +427,7 @@ export async function runPipeline(
   agent("review", "running");
   const sharedSoFar: SharedSnapshot = {
     source: sourceLabel, sourceUrl, sha, title, author, base, head,
+    coverageNote,
     files: files.length, additions, deletions,
     detectorMode: useLLM ? "rules + llm" : "deterministic rules",
     llmModel: useLLM ? settings.model : null, tokensIn, tokensOut,
@@ -433,7 +466,7 @@ export async function runPipeline(
 
   /* stage 8 — post back to GitHub */
   stage(7);
-  const event: "APPROVE" | "REQUEST_CHANGES" = review.overall === "high" ? "REQUEST_CHANGES" : "APPROVE";
+  const event = selectReviewEvent(review.overall, Boolean(coverageNote));
   if (input.kind === "github" && settings.ghToken.trim()) {
     log("orchestrator", `POST /repos/${input.owner}/${input.repo}/pulls/${input.pr}/reviews · event=${event}`);
     try {
@@ -442,11 +475,12 @@ export async function runPipeline(
         event,
         body: review.markdown,
         comments: review.inline,
-      });
+      }, signal);
       emit({ kind: "post", text: `review #${res.id} posted · ${event}`, url: res.htmlUrl });
       emit({ kind: "state", patch: { posted: res.htmlUrl } });
       log("orchestrator", `✓ 201 Created — review #${res.id} is live on the PR`);
     } catch (err) {
+      if (isCancelled()) return;
       const msg = err instanceof Error ? err.message : String(err);
       emit({ kind: "post", text: `post failed: ${msg}`, url: null });
       log("orchestrator", `✗ GitHub rejected the review — ${msg}`);

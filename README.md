@@ -102,9 +102,16 @@ _20 built-in rules executed on every changed hunk alongside Semgrep and Bandit:_
 ```bash
 npm install
 npm run dev        # local dev server on localhost:5173
+npm test           # browser integration and pipeline safety tests
 npx tsc --noEmit   # strict TypeScript verification
 npm run build      # production bundle in dist/
 ```
+
+Backend regression tests run with `python -m unittest discover -s backend/tests -v`.
+
+GitHub PR audits fetch up to 200 changed files. Larger PRs and files without a text
+patch are marked as partial, and the app posts a comment instead of an approval.
+Cancel aborts active GitHub and LLM requests.
 
 ### 2. Python Webhook Service (`backend/`)
 
