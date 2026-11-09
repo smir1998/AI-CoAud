@@ -16,7 +16,7 @@ export interface LogLine {
 }
 
 export interface EngineState {
-  status: "running" | "done" | "error";
+  status: "idle" | "running" | "done" | "error";
   stage: number;
   agents: Record<AgentId, { status: "pending" | "running" | "done"; count: number }>;
   logs: LogLine[];
@@ -44,8 +44,8 @@ const initialShared = (): SharedSnapshot => ({
   findings: 0, counts: zeroCounts(), patches: 0, risk: null, posted: null, elapsedMs: 0,
 });
 
-const initialState = (): EngineState => ({
-  status: "running",
+export const initialState = (): EngineState => ({
+  status: "idle",
   stage: -1,
   agents: initialAgents(),
   logs: [],
@@ -174,12 +174,6 @@ export function useAuditEngine() {
     genRef.current++;
     controllerRef.current?.abort();
     controllerRef.current = null;
-  }, []);
-
-  // audit the first fixture on load so the console opens alive
-  useEffect(() => {
-    run({ kind: "fixture", fixture: FIXTURES[0] }, settings);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { state, settings, updateSettings, input, run, rerun, cancel, provider: settings.provider as Provider };

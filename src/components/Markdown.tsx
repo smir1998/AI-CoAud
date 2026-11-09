@@ -4,6 +4,17 @@ import type { ReactNode } from "react";
 
 const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(!\[[^\]\n]*\]\([^)\n]+\))|(\[[^\]\n]+\]\([^)\n]+\))/g;
 
+function safeMarkdownHref(raw: string): string | null {
+  const candidate = raw.trim();
+  if (!candidate || /[\u0000-\u001f\u007f]/.test(candidate)) return null;
+  try {
+    const protocol = new URL(candidate, "https://markdown.invalid").protocol;
+    return ["http:", "https:", "mailto:"].includes(protocol) ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
 function inline(text: string, base: string): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
@@ -27,9 +38,10 @@ function inline(text: string, base: string): ReactNode[] {
     } else {
       const label = tok.slice(1, tok.indexOf("]"));
       const url = tok.slice(tok.indexOf("(") + 1, -1);
-      out.push(
-        <a key={key} href={url} target="_blank" rel="noreferrer" className="md-link">{label}</a>,
-      );
+      const safeUrl = safeMarkdownHref(url);
+      out.push(safeUrl
+        ? <a key={key} href={safeUrl} target="_blank" rel="noopener noreferrer" className="md-link">{label}</a>
+        : <span key={key}>{label}</span>);
     }
     last = m.index + tok.length;
   }
