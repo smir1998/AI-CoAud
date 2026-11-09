@@ -39,7 +39,7 @@ export default function Console() {
   const { shared, status } = state;
 
   const [tab, setTab] = useState<Tab>("findings");
-  const [mode, setMode] = useState<Mode>("sample");
+  const [mode, setMode] = useState<Mode>("github");
   const [prInput, setPrInput] = useState("");
   const [diffInput, setDiffInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -152,6 +152,9 @@ export default function Console() {
             )}
             {status === "error" && (
               <><Led color="#f43f5e" on /><span className="text-rosex">pipeline halted</span></>
+            )}
+            {status === "idle" && (
+              <><Led color="#64748b" on /><span className="text-ink-400">ready · enter a pull request, paste a diff, or choose a sample</span></>
             )}
           </span>
         </div>
