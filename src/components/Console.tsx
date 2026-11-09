@@ -205,6 +205,16 @@ export default function Console() {
                 </div>
               </>
             )}
+            {settings.provider !== "none" && (
+              <label className="flex items-start gap-2 rounded-md border border-ink-700/70 bg-ink-900/50 p-2.5 md:col-span-3">
+                <input type="checkbox" checked={settings.specialistReview ?? false}
+                  onChange={(e) => updateSettings({ specialistReview: e.target.checked })}
+                  className="mt-0.5 accent-orchid" />
+                <span className="font-mono text-[10px] leading-relaxed text-ink-300">
+                  Enable five focused security specialists <span className="text-ink-500">(up to 5 extra model calls per audit)</span>
+                </span>
+              </label>
+            )}
             <div>
               <p className="pb-1.5 font-mono text-[9.5px] tracking-wider text-ink-500">GITHUB TOKEN (POSTS REVIEWS)</p>
               <input type="password" value={settings.ghToken} onChange={(e) => updateSettings({ ghToken: e.target.value })}

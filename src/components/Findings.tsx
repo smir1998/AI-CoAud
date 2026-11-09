@@ -12,6 +12,7 @@ interface Props {
 const DETECTOR_LABEL: Record<Finding["detector"], { text: string; icon: ReactNode }> = {
   rule: { text: "deterministic rule", icon: <ShieldIcon className="h-3 w-3" /> },
   llm: { text: "llm audit", icon: <CpuIcon className="h-3 w-3" /> },
+  specialist: { text: "specialist review", icon: <SparkIcon className="h-3 w-3" /> },
   hybrid: { text: "rule + llm corroborated", icon: <SparkIcon className="h-3 w-3" /> },
 };
 

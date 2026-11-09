@@ -15,6 +15,7 @@ import {
 } from "./external";
 import { CONFIG } from "../config";
 import type { Fixture } from "../data/fixtures";
+import { SECURITY_SPECIALISTS, parseSpecialistFindings, specialistPrompt } from "./specialists";
 
 export type AgentId = "orchestrator" | "style" | "security" | "tools" | "refactor" | "review";
 
@@ -28,6 +29,7 @@ export interface Settings {
   apiKey: string;
   model: string;
   ghToken: string;
+  specialistReview?: boolean;
 }
 
 export interface SharedSnapshot {
@@ -306,7 +308,7 @@ export async function runPipeline(
     patch: {
       source: sourceLabel, sourceUrl, sha, title, author, base, head,
       files: files.length, additions, deletions,
-      detectorMode: useLLM ? "rules + llm" : "deterministic rules",
+      detectorMode: useLLM ? `rules + llm${settings.specialistReview ? " + 5 specialists" : ""}` : "deterministic rules",
     },
   });
   for (const f of files.slice(0, 6)) log("orchestrator", `• ${f.path}  +${f.additions}/−${f.deletions}`);
@@ -340,11 +342,13 @@ export async function runPipeline(
 
   // LLM pass with corroboration merge
   let tokensIn = 0, tokensOut = 0;
+  let llmFindingCount = 0;
   if (useLLM) {
     try {
       const llm = await llmSecurityPass(files, settings, emit, isCancelled, signal);
       if (isCancelled()) return;
       tokensIn = llm.tokensIn; tokensOut = llm.tokensOut;
+      llmFindingCount = llm.findings.length;
       let merged = 0, novel = 0;
       for (const lf of llm.findings) {
         const near = findings.find((rf) => rf.file === lf.file && Math.abs(rf.line - lf.line) <= 3 && rf.agent === "security");
@@ -363,6 +367,44 @@ export async function runPipeline(
       if (isCancelled()) return;
       log("security", `llm pass failed (${err instanceof Error ? err.message : err}) — deterministic findings stand`);
       agent("security", "done", 0);
+    }
+    if (settings.specialistReview && !isCancelled()) {
+      log("security", "running five focused specialist reviews on bounded added-line context (up to five extra model calls)");
+      const results = await Promise.all(SECURITY_SPECIALISTS.map(async (specialist) => {
+        try {
+          const result = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model,
+            `You are a careful application security specialist focused on ${specialist.focus}.`,
+            specialistPrompt(specialist, files), signal);
+          return { specialist, findings: parseSpecialistFindings(specialist, files, result.text), input: result.inputTokens, output: result.outputTokens };
+        } catch (error) {
+          if (isCancelled()) return { specialist, findings: [], input: 0, output: 0 };
+          log("security", `${specialist.name} review failed (${error instanceof Error ? error.message : String(error)}) — other results retained`);
+          return { specialist, findings: [], input: 0, output: 0 };
+        }
+      }));
+      if (isCancelled()) return;
+      let accepted = 0;
+      for (const result of results) {
+        tokensIn += result.input;
+        tokensOut += result.output;
+        log("security", `${result.specialist.name}: ${result.findings.length} finding(s)`);
+        for (const sf of result.findings) {
+          const exact = findings.find((f) => f.agent === "security" && f.file === sf.file && f.line === sf.line &&
+            f.title.trim().toLowerCase() === sf.title.trim().toLowerCase());
+          if (exact) {
+            if (exact.detector === "rule" || exact.detector === "llm") {
+              exact.detector = "hybrid";
+              exact.confidence = Math.max(exact.confidence, sf.confidence);
+            }
+            continue;
+          }
+          const duplicate = findings.some((f) => f.agent === "security" && f.file === sf.file && f.line === sf.line &&
+            f.title.trim().toLowerCase() === sf.title.trim().toLowerCase());
+          if (!duplicate) { findings.push(sf); accepted++; }
+        }
+      }
+      llmFindingCount += accepted;
+      agent("security", "done", llmFindingCount);
     }
   } else {
     log("security", "heuristic mode — promoting corroborated rule hits only");
@@ -429,7 +471,7 @@ export async function runPipeline(
     source: sourceLabel, sourceUrl, sha, title, author, base, head,
     coverageNote,
     files: files.length, additions, deletions,
-    detectorMode: useLLM ? "rules + llm" : "deterministic rules",
+    detectorMode: useLLM ? `rules + llm${settings.specialistReview ? " + 5 specialists" : ""}` : "deterministic rules",
     llmModel: useLLM ? settings.model : null, tokensIn, tokensOut,
     costUsd: useLLM ? estimateCost(settings.model, tokensIn, tokensOut) : 0,
     findings: findings.length, ...recount(findings), patches, risk: null, posted: null,

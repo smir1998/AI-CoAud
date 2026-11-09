@@ -31,7 +31,7 @@ export interface FindingPatch {
 export interface Finding {
   id: string;
   agent: "security" | "style";
-  detector: "rule" | "llm" | "hybrid";
+  detector: "rule" | "llm" | "specialist" | "hybrid";
   rule?: string;
   severity: Severity;
   confidence: number; // 0..1
