@@ -112,14 +112,16 @@ npm run build      # production bundle in dist/
 cd backend
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # set GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, ANTHROPIC_API_KEY / OPENAI_API_KEY
+cp .env.example .env          # set GITHUB_TOKEN, generate both server secrets and add an LLM key
+export APP_ENV=development    # local unsigned webhook / audit access mode
 uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 3. Full Container Stack (Web + API + Redis)
 
 ```bash
-cp backend/.env.example .env  # set GITHUB_TOKEN and API keys
+cp backend/.env.example .env  # set GITHUB_TOKEN, both server secrets and API keys
+# Generate GITHUB_WEBHOOK_SECRET and AUDIT_API_TOKEN separately with: openssl rand -hex 32
 docker compose up --build
 # Console → localhost:8080
 # Webhook → localhost:8000/webhook
@@ -144,6 +146,7 @@ bandit -r backend -ll -q
 | :--- | :--- | :--- |
 | `GITHUB_TOKEN` | Backend `.env` or Browser drawer | Fetch private PRs, raise rate limits, and post inline PR reviews |
 | `GITHUB_WEBHOOK_SECRET` | Backend `.env` | HMAC-SHA256 verification (`X-Hub-Signature-256`) on `POST /webhook` |
+| `AUDIT_API_TOKEN` | Backend `.env` | Bearer token for reading `/audits` and `/audits/{run_id}` |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Backend `.env` or Browser drawer | Live LLM Security, Style, and Refactor agents (falls back to deterministic rules when omitted) |
 | `LLM_MODEL` | Backend `.env` | Default CrewAI model identifier (defaults to `anthropic/claude-sonnet-4-5`) |
 | `REDIS_URL` | Backend `.env` | Redis state store URL (falls back to in-memory store when unset) |

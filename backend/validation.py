@@ -1,10 +1,10 @@
 """AI CoAudS — final validation gate.
 
 Nothing reaches GitHub unproven. Each generated patch must:
-  1. target lines that actually exist in the file's post-image,
-  2. keep brackets balanced,
+  1. match unique exact context in the full file at the audited commit,
+  2. keep the updated file's brackets balanced,
   3. still parse (ast.parse for Python),
-  4. survive `ruff check` when ruff is installed.
+  4. survive `ruff check` on the full updated file when ruff is installed.
 Findings must point at *added* lines — claims about untouched code are
 the classic LLM-review failure mode and are dropped here.
 """
@@ -15,7 +15,6 @@ import logging
 import shutil
 import subprocess
 import tempfile
-import textwrap
 from pathlib import Path
 
 from state import AuditState, Finding
@@ -51,8 +50,8 @@ def validate_patches(state: AuditState) -> list[dict]:
     for f in state.findings:
         if f.patch is None:
             continue
-        lines = state.post_image.get(f.file, "").splitlines()
-        checks = _check_patch(f, lines)
+        source = state.post_image.get(f.file)
+        checks = _check_patch(f, source)
         f.patch.validated = all(c["ok"] for c in checks)
         f.patch.validation_detail = "; ".join(c["text"] for c in checks)
         patched_any = True
@@ -64,27 +63,30 @@ def validate_patches(state: AuditState) -> list[dict]:
     return results
 
 
-def _check_patch(f: Finding, lines: list[str]) -> list[dict]:
+def _check_patch(f: Finding, source: str | None) -> list[dict]:
     checks: list[dict] = []
     patch = f.patch
     assert patch is not None
 
-    target_exists = any(ln.strip() == patch.before.strip() for ln in lines)
+    target_count = source.count(patch.before) if source is not None and patch.before else 0
+    target_exists = target_count == 1
     checks.append({
         "ok": target_exists,
-        "text": f"target line exists in {f.file}" if target_exists
-                else f"target line NOT found in {f.file} — stale or hallucinated patch",
+        "text": f"unique exact patch context exists in {f.file}" if target_exists
+                else f"patch context {'is ambiguous' if target_count > 1 else 'was not found'} in {f.file}",
     })
     if not target_exists:
         return checks
 
-    bal = _balanced(patch.after)
-    checks.append({"ok": bal, "text": "brackets balanced" if bal else "unbalanced brackets in replacement"})
+    assert source is not None
+    updated = source.replace(patch.before, patch.after, 1)
+    bal = _balanced(updated)
+    checks.append({"ok": bal, "text": "brackets balanced" if bal else "unbalanced brackets in updated file"})
 
     if f.file.endswith(".py"):
         try:
-            ast.parse(textwrap.dedent(patch.after))
-            checks.append({"ok": True, "text": "ast.parse OK"})
+            ast.parse(updated, filename=f.file)
+            checks.append({"ok": True, "text": "updated file parses with ast.parse"})
         except SyntaxError as exc:
             checks.append({"ok": False, "text": f"syntax error: {exc.msg} (line {exc.lineno})"})
             return checks
@@ -92,7 +94,7 @@ def _check_patch(f: Finding, lines: list[str]) -> list[dict]:
         if shutil.which("ruff"):
             with tempfile.TemporaryDirectory() as tmp:
                 p = Path(tmp) / "patched.py"
-                p.write_text(textwrap.dedent(patch.after) + "\n", encoding="utf-8")
+                p.write_text(updated, encoding="utf-8")
                 proc = subprocess.run(
                     ["ruff", "check", "--select", "E9,F", str(p)],
                     capture_output=True, text=True, timeout=30,

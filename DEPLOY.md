@@ -17,7 +17,8 @@ Two deployables: the **web console** (static SPA) and the **webhook service**
 ## 1 — Local, everything at once
 
 ```bash
-cp backend/.env.example .env      # fill GITHUB_TOKEN + keys
+cp backend/.env.example .env      # set GITHUB_TOKEN and generate both server secrets
+# Generate separate secrets with: openssl rand -hex 32
 docker compose up --build
 # console  → http://localhost:8080
 # webhook  → http://localhost:8000/webhook
@@ -30,8 +31,13 @@ No Docker? Run the halves by hand:
 npm run dev                                  # console on :5173
 cd backend && python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-REDIS_URL= uvicorn server:app --reload       # in-memory state mode
+APP_ENV=development REDIS_URL= uvicorn server:app --reload  # in-memory state mode
 ```
+
+For local development without secrets, set `APP_ENV=development` explicitly.
+Unsigned webhook requests and unauthenticated audit reads are permitted only in
+that mode. Production mode requires `GITHUB_WEBHOOK_SECRET` and
+`AUDIT_API_TOKEN` at startup.
 
 ## 2 — GitHub webhook wiring
 
@@ -51,6 +57,9 @@ In the repo: **Settings → Webhooks → Add webhook**
 
 The server verifies the HMAC-SHA256 signature, dedupes by head SHA, and
 enqueues onto a bounded worker pool (202 + `run_id` immediately).
+The payload is capped at 1 MiB. `/audits` and `/audits/{run_id}` require
+`Authorization: Bearer $AUDIT_API_TOKEN`; keep the token separate from the
+GitHub and LLM credentials.
 
 ## 3 — Production options
 
@@ -71,7 +80,8 @@ audit.your.dev {
 
 - web: `fly launch --dockerfile deploy/Dockerfile.web` (static, any region)
 - api: `fly launch` in `backend/`, then `fly redis create` and set
-  `REDIS_URL`, `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`
+  `REDIS_URL`, `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `AUDIT_API_TOKEN`,
+  `ANTHROPIC_API_KEY`
 
 ### C. Static hosting + managed API
 
@@ -106,6 +116,7 @@ One-time setup:
 |---|---|---|
 | `GITHUB_TOKEN` | api env | PR read + review write |
 | `GITHUB_WEBHOOK_SECRET` | api env | HMAC verification |
+| `AUDIT_API_TOKEN` | api env | Bearer auth for audit result endpoints |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | api env | agent calls |
 | `ALLOWED_REPOS` | api env | allowlist, comma-separated |
 

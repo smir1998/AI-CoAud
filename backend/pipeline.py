@@ -13,6 +13,7 @@ from typing import Optional
 
 from agents import refactor_agent, run_security_agent, run_style_agent
 from github_client import GitHubClient, PRMeta
+from limits import MAX_FILE_BYTES, MAX_PR_TOTAL_BYTES
 from state import AuditState, Finding, Severity, StateStore
 from tools import ToolRunner
 from validation import drop_off_hunk_findings, validate_patches
@@ -94,14 +95,36 @@ class AuditPipeline:
         assert self.github, "GITHUB_TOKEN required for fetching"
         meta: PRMeta = await self.github.get_pull(self.owner, self.repo, self.number)
         state.commit_sha, state.base_ref, state.head_ref = meta.head_sha, meta.base_ref, meta.head_ref
+        state.changed_files = [f.path for f in meta.files]
+        state.additions = sum(f.additions for f in meta.files)
+        state.deletions = sum(f.deletions for f in meta.files)
+        total_bytes = 0
         for f in meta.files:
-            if f.patch:
-                state.changed_files.append(f.path)
-                added, image = parse_diff(f.patch)
-                state.added_lines[f.path] = added
-                state.post_image[f.path] = image
-                state.additions += f.additions
-                state.deletions += f.deletions
+            if not f.patch:
+                state.incomplete_reasons.append(f"diff unavailable for {f.path}")
+                continue
+            if len(f.patch.encode("utf-8")) > MAX_FILE_BYTES:
+                state.incomplete_reasons.append(f"diff exceeds per-file limit for {f.path}")
+                continue
+
+            added, _ = parse_diff(f.patch)
+            state.added_lines[f.path] = added
+            if f.status == "removed":
+                continue
+
+            try:
+                content = await self.github.get_file(self.owner, self.repo, f.path, meta.head_sha)
+            except Exception as exc:
+                state.incomplete_reasons.append(f"could not fetch full file {f.path}: {exc}")
+                continue
+            content_bytes = len(content.encode("utf-8"))
+            if total_bytes + content_bytes > MAX_PR_TOTAL_BYTES:
+                state.incomplete_reasons.append(
+                    f"pull request exceeds the {MAX_PR_TOTAL_BYTES}-byte total audit limit"
+                )
+                break
+            state.post_image[f.path] = content
+            total_bytes += content_bytes
         state.say("orchestrator",
                   f"fetched {len(state.changed_files)} files (+{state.additions}/−{state.deletions}) @ {state.commit_sha[:10]}")
         self.store.save(state)
@@ -110,12 +133,16 @@ class AuditPipeline:
         state.stage = "audit"
         incomplete: list[str] = []
         self.store.save(state)
-        security, style, tool_results = await asyncio.gather(
-            run_security_agent(state),
-            run_style_agent(state),
-            ToolRunner(state.post_image).run_all(),
-            return_exceptions=True,
-        )
+        runner = ToolRunner(state.post_image)
+        try:
+            security, style, tool_results = await asyncio.gather(
+                run_security_agent(state),
+                run_style_agent(state),
+                runner.run_all(),
+                return_exceptions=True,
+            )
+        finally:
+            runner.cleanup()
         for name, res in (("security", security), ("style", style)):
             if isinstance(res, BaseException):
                 incomplete.append(f"{name} agent failed")
@@ -135,10 +162,10 @@ class AuditPipeline:
             )
             state.say("tools", f"{sum(len(r['hits']) for r in tool_results)} hits "
                                f"({', '.join(r['tool'] + ':' + r['status'] for r in tool_results)})")
-        state.incomplete_reasons = incomplete
-        state.audit_complete = not incomplete
-        if incomplete:
-            state.say("review", "audit incomplete; auto-approval disabled: " + ", ".join(incomplete))
+        state.incomplete_reasons.extend(incomplete)
+        state.audit_complete = not state.incomplete_reasons
+        if state.incomplete_reasons:
+            state.say("review", "audit incomplete; auto-approval disabled: " + ", ".join(state.incomplete_reasons))
         self.store.save(state)
 
     def _corroborate(self, state: AuditState) -> None:

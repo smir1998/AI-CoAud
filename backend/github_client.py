@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Any, Optional
+from urllib.parse import quote
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from limits import MAX_FILE_BYTES, MAX_PR_FILES
 
 log = logging.getLogger("coauds.github")
 
@@ -89,6 +91,8 @@ class GitHubClient:
             batch = await self._get(f"/repos/{owner}/{repo}/pulls/{number}/files", {"per_page": 100, "page": page})
             if not batch:
                 break
+            if len(files) + len(batch) > MAX_PR_FILES:
+                raise GitHubError(f"pull request exceeds the {MAX_PR_FILES}-file audit limit")
             files += [
                 PRFile(f["filename"], f["status"], f["additions"], f["deletions"], f.get("patch"))
                 for f in batch
@@ -107,6 +111,29 @@ class GitHubClient:
             head_sha=pr["head"]["sha"],
             files=files,
         )
+
+    async def get_file(self, owner: str, repo: str, path: str, ref: str) -> str:
+        """Fetch one UTF-8 file at the audited commit, with a hard byte cap."""
+        url = f"/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/contents/{quote(path, safe='/')}"
+        async with self._client.stream(
+            "GET",
+            url,
+            params={"ref": ref},
+            headers={"Accept": "application/vnd.github.raw+json"},
+        ) as res:
+            _check(res)
+            content_length = res.headers.get("Content-Length")
+            if content_length and content_length.isdigit() and int(content_length) > MAX_FILE_BYTES:
+                raise GitHubError(f"{path} exceeds the {MAX_FILE_BYTES}-byte per-file audit limit")
+            body = bytearray()
+            async for chunk in res.aiter_bytes():
+                if len(body) + len(chunk) > MAX_FILE_BYTES:
+                    raise GitHubError(f"{path} exceeds the {MAX_FILE_BYTES}-byte per-file audit limit")
+                body.extend(chunk)
+        try:
+            return body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise GitHubError(f"{path} is not a UTF-8 text file") from exc
 
     async def _get(self, path: str, params: Optional[dict] = None) -> Any:
         res = await self._client.get(path, params=params)
