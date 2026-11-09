@@ -131,6 +131,7 @@ async def list_audits():
     return [
         {"run_id": s.run_id, "repository": s.repository, "pr_number": s.pr_number,
          "status": s.status, "risk": s.overall_risk.value, "findings": len(s.findings),
+         "audit_complete": s.audit_complete, "incomplete_reasons": s.incomplete_reasons,
          "review_url": s.review_url, "created_at": s.created_at}
         for s in store.recent()
     ]

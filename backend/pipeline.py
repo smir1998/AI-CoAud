@@ -108,6 +108,7 @@ class AuditPipeline:
 
     async def _parallel_audit(self, state: AuditState) -> None:
         state.stage = "audit"
+        incomplete: list[str] = []
         self.store.save(state)
         security, style, tool_results = await asyncio.gather(
             run_security_agent(state),
@@ -117,16 +118,27 @@ class AuditPipeline:
         )
         for name, res in (("security", security), ("style", style)):
             if isinstance(res, BaseException):
+                incomplete.append(f"{name} agent failed")
                 state.say(name, f"agent error: {res}")
             else:
                 state.findings.extend(res)
                 state.say(name, f"{len(res)} findings")
         if isinstance(tool_results, BaseException):
+            incomplete.append("static tools failed")
             state.say("tools", f"tool runner error: {tool_results}")
         else:
             state.tool_hits = [h for r in tool_results for h in r["hits"]]  # type: ignore[index]
+            incomplete.extend(
+                f"{result['tool']} {result['status']}"
+                for result in tool_results
+                if result["status"] != "ok"
+            )
             state.say("tools", f"{sum(len(r['hits']) for r in tool_results)} hits "
                                f"({', '.join(r['tool'] + ':' + r['status'] for r in tool_results)})")
+        state.incomplete_reasons = incomplete
+        state.audit_complete = not incomplete
+        if incomplete:
+            state.say("review", "audit incomplete; auto-approval disabled: " + ", ".join(incomplete))
         self.store.save(state)
 
     def _corroborate(self, state: AuditState) -> None:
@@ -202,6 +214,9 @@ class AuditPipeline:
                 "",
             ]
         md += ["---", "_Posted by AI CoAudS — deterministic rules + LLM audit; patches validated before posting._"]
+        if not state.audit_complete:
+            details = ", ".join(state.incomplete_reasons) or "required checks did not complete"
+            md.insert(2, f"**Audit incomplete — no approval will be posted.** {details}")
         state.review_markdown = "\n".join(md)
         self.store.save(state)
 
@@ -222,9 +237,14 @@ class AuditPipeline:
         if not self.github:
             state.say("orchestrator", "no write token — review stored, not posted")
             return
-        event = "REQUEST_CHANGES" if any(
-            f.severity in (Severity.CRITICAL, Severity.HIGH) for f in state.findings
-        ) else "APPROVE" if state.findings == [] else "COMMENT"
+        if not state.audit_complete:
+            event = "COMMENT"
+        elif any(f.severity in (Severity.CRITICAL, Severity.HIGH) for f in state.findings):
+            event = "REQUEST_CHANGES"
+        elif not state.findings:
+            event = "APPROVE"
+        else:
+            event = "COMMENT"
         comments = [
             {"path": f.file, "line": f.line, "side": "RIGHT",
              "body": f"**{f.severity.value.upper()}** — {f.title}\n\n{f.issue}\n\n> {f.recommendation}"}

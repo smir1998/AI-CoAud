@@ -1,5 +1,5 @@
 # ── AI CoAudS webhook service ────────────────────────────
-# Python 3.12: crewai 1.15.18 declares requires-python >=3.10,<3.14
+# Python 3.12: crewai 1.15.39 declares requires-python >=3.10,<3.14
 # (verified in its pyproject) — 3.12 is the max-wheel-coverage default;
 # 3.13 is supported too. Bump deliberately: scripts/check-deps.sh first.
 #

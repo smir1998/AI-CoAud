@@ -108,8 +108,9 @@ def drop_off_hunk_findings(state: AuditState) -> int:
     kept: list[Finding] = []
     for f in state.findings:
         added = state.added_lines.get(f.file, set())
-        if added and f.line not in added and f.source == "llm":
-            state.dropped.append({"id": f.id, "reason": f"line {f.line} not in changed hunks"})
+        if f.source == "llm" and f.line not in added:
+            reason = f"line {f.line} not in changed hunks" if added else "file has no added lines"
+            state.dropped.append({"id": f.id, "reason": reason})
             dropped += 1
         else:
             kept.append(f)

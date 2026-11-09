@@ -80,6 +80,8 @@ class AuditState(BaseModel):
     review_markdown: str = ""
     review_url: Optional[str] = None
     posted: bool = False
+    audit_complete: bool = False  # required agents and scanners all completed
+    incomplete_reasons: list[str] = Field(default_factory=list)
     status: str = "queued"        # queued | running | done | failed
     stage: str = "fetch"
     error: Optional[str] = None

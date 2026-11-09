@@ -68,6 +68,9 @@ class ToolRunner:
 
     async def _wrap(self, name: str, fn) -> dict:
         t0 = time.time()
+        if name == "pip-audit" and not self.requirements:
+            log.info("pip-audit has no target dependency manifest — skipped")
+            return {"tool": name, "status": "skipped", "hits": [], "ms": 0}
         if shutil.which(name.split()[0]) is None:
             log.info("%s not installed — skipped", name)
             return {"tool": name, "status": "skipped", "hits": [], "ms": 0}

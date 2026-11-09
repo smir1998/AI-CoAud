@@ -29,7 +29,7 @@ GitHub PR ──▶ Webhook (HMAC) ──▶ Orchestrator ──▶ Security ‖
 
 - **Real PR ingestion** — Fetch any public or private PR via the GitHub REST API (`/repos/{owner}/{repo}/pulls/{n}` and paginated `/files`), try 3 built-in PR fixtures (`acme/api-service #142`, `acme/file-store #87`, `acme/docs-site #23`), or paste a unified diff directly.
 - **Deterministic engine** — 20 security detectors mapped to CWEs (SQLi via interpolation/templates, hardcoded secrets & AWS keys, PEM private keys, `eval`/`exec`, `shell=True`, MD5/SHA1, `pickle`/`yaml.load`, disabled TLS verification, debug mode, path traversal, weak PRNGs, JWT verification bypass, XSS, cleartext HTTP, `0777` permissions, sensitive logging) plus 10 style & structural checks.
-- **Live LLM agents** — Bring an Anthropic (`claude-sonnet-4-5`) or OpenAI (`gpt-4o`) key in the browser drawer (stored in `localStorage` only) or run the Python backend with CrewAI (`crewai==1.15.18`) and automatic direct-API fallback.
+- **Live LLM agents** — Bring an Anthropic (`claude-sonnet-4-5`) or OpenAI (`gpt-4o`) key in the browser drawer (stored in `localStorage` only) or run the Python backend with CrewAI (`crewai==1.15.39`) and automatic direct-API fallback.
 - **Validated patches** — Deterministic templates and the Refactor Agent generate minimal, behavior-preserving replacements. Every patch is checked against the post-image file, bracket balance, Python `ast.parse`, and `ruff check --select E9,F`.
 - **Real GitHub review posting** — Posts inline review comments via `POST /repos/{owner}/{repo}/pulls/{n}/reviews` (`REQUEST_CHANGES` or `APPROVE`), with automatic fallback to a single PR issue comment if GitHub rejects an outdated diff position (`422`).
 
@@ -128,7 +128,7 @@ docker compose up --build
 
 ### 4. Dependency Resolution & Security Gate
 
-The backend dependency graph in [`backend/requirements.txt`](backend/requirements.txt) uses a strict version-ownership layout so `crewai==1.15.18` resolves its transitive tree (`litellm`, `openai`, `anthropic`, `chromadb`) without version-floor collisions, while capping shared major versions (`fastapi<1.0`, `starlette<2.0`, `pydantic>=2.11,<3.0`, `pydantic-settings>=2.14.2,<3.0`, `httpx<1.0`, `tenacity>=8.2,<10.0`).
+The backend dependency graph in [`backend/requirements.txt`](backend/requirements.txt) uses a strict version-ownership layout so `crewai==1.15.39` resolves its transitive tree (`litellm`, `openai`, `anthropic`, `chromadb`, `mcp`) without version-floor collisions, while capping shared major versions (`fastapi<1.0`, `starlette<2.0`, `pydantic>=2.11,<3.0`, `pydantic-settings>=2.14.2,<3.0`, `httpx<1.0`, `tenacity>=8.2,<10.0`).
 
 Verify dependency resolution and vulnerability scanning locally before pushing:
 
