@@ -29,10 +29,11 @@ const GH = CONFIG.endpoints.github;
 const GH_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
 
 async function gh<T>(url: string, init?: RequestInit): Promise<T> {
+  const timeout = AbortSignal.timeout(CONFIG.limits.requestTimeoutMs);
   const res = await fetch(url, {
     ...init,
     headers: { ...GH_HEADERS, ...(init?.headers || {}) },
-    signal: init?.signal ?? AbortSignal.timeout(CONFIG.limits.requestTimeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -57,13 +58,37 @@ export function parsePRRef(input: string): { owner: string; repo: string; pr: nu
   return null;
 }
 
-export async function fetchPullRequest(owner: string, repo: string, pr: number): Promise<{ meta: PRMeta; files: PRFilePatch[] }> {
-  const [pull, files] = await Promise.all([
+export async function fetchPullRequest(
+  owner: string, repo: string, pr: number, signal?: AbortSignal,
+): Promise<{ meta: PRMeta; files: PRFilePatch[]; partialCoverage: boolean }> {
+  const [pull, firstPage] = await Promise.all([
     gh<{ title: string; user: { login: string }; head: { sha: string; ref: string }; base: { ref: string }; html_url: string; body: string | null }>(
-      `${GH}/repos/${owner}/${repo}/pulls/${pr}`),
+      `${GH}/repos/${owner}/${repo}/pulls/${pr}`, { signal }),
     gh<{ filename: string; status: string; additions: number; deletions: number; patch?: string }[]>(
-      `${GH}/repos/${owner}/${repo}/pulls/${pr}/files?per_page=100`),
+      `${GH}/repos/${owner}/${repo}/pulls/${pr}/files?per_page=100&page=1`, { signal }),
   ]);
+  const files = [...firstPage];
+  const maxFiles = CONFIG.limits.maxFilesPerAudit;
+  let page = 2;
+  let lastBatchLength = firstPage.length;
+  while (files.length < maxFiles && lastBatchLength === 100) {
+    const batch = await gh<typeof firstPage>(
+      `${GH}/repos/${owner}/${repo}/pulls/${pr}/files?per_page=100&page=${page++}`, { signal },
+    );
+    if (batch.length === 0) break;
+    files.push(...batch);
+    lastBatchLength = batch.length;
+  }
+  let partialCoverage = files.length > maxFiles;
+  if (files.length >= maxFiles) {
+    if (!partialCoverage && lastBatchLength === 100) {
+      const nextPage = await gh<typeof firstPage>(
+        `${GH}/repos/${owner}/${repo}/pulls/${pr}/files?per_page=100&page=${page}`, { signal },
+      );
+      partialCoverage = nextPage.length > 0;
+    }
+    files.length = maxFiles;
+  }
   return {
     meta: {
       owner, repo, prNumber: pr, title: pull.title, author: pull.user.login,
@@ -71,6 +96,7 @@ export async function fetchPullRequest(owner: string, repo: string, pr: number):
       url: pull.html_url, body: pull.body ?? "",
     },
     files: files.map((f) => ({ path: f.filename, status: f.status, additions: f.additions, deletions: f.deletions, patch: f.patch })),
+    partialCoverage,
   };
 }
 
@@ -83,7 +109,9 @@ export interface InlineComment {
 export async function postPullRequestReview(
   owner: string, repo: string, pr: number, token: string,
   payload: { commitId: string; event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string; comments: InlineComment[] },
+  signal?: AbortSignal,
 ): Promise<{ id: number; htmlUrl: string }> {
+  const timeout = AbortSignal.timeout(CONFIG.limits.requestTimeoutMs);
   const res = await fetch(`${GH}/repos/${owner}/${repo}/pulls/${pr}/reviews`, {
     method: "POST",
     headers: { ...GH_HEADERS, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -93,6 +121,7 @@ export async function postPullRequestReview(
       body: payload.body,
       comments: payload.comments,
     }),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -139,13 +168,18 @@ function llmError(e: unknown, fallback: string): Error {
   return e instanceof Error ? e : new Error(fallback);
 }
 
-export async function callLLM(provider: Exclude<Provider, "none">, apiKey: string, model: string, system: string, prompt: string): Promise<LLMResult> {
+export async function callLLM(
+  provider: Exclude<Provider, "none">, apiKey: string, model: string,
+  system: string, prompt: string, signal?: AbortSignal,
+): Promise<LLMResult> {
   if (provider === "anthropic") {
     let res: Response;
     try {
       res = await fetch(`${CONFIG.endpoints.anthropic}/v1/messages`, {
       method: "POST",
-      signal: AbortSignal.timeout(CONFIG.limits.llmTimeoutMs),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(CONFIG.limits.llmTimeoutMs)])
+        : AbortSignal.timeout(CONFIG.limits.llmTimeoutMs),
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
@@ -175,7 +209,9 @@ export async function callLLM(provider: Exclude<Provider, "none">, apiKey: strin
   try {
     res = await fetch(`${CONFIG.endpoints.openai}/v1/chat/completions`, {
       method: "POST",
-      signal: AbortSignal.timeout(CONFIG.limits.llmTimeoutMs),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(CONFIG.limits.llmTimeoutMs)])
+        : AbortSignal.timeout(CONFIG.limits.llmTimeoutMs),
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model,

@@ -227,6 +227,13 @@ export default function Console() {
         </section>
       )}
 
+      {shared.coverageNote && (
+        <section role="status" className="anim-rise flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-400/[0.07] px-4 py-3">
+          <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+          <p className="text-[12.5px] text-ink-200"><b className="text-amber-300">Partial coverage:</b> {shared.coverageNote}</p>
+        </section>
+      )}
+
       {/* ── pipeline rail + crew ── */}
       <section className="anim-rise panel px-4 py-3" style={{ animationDelay: "60ms" }}>
         <div className="flex flex-wrap items-center gap-x-1 gap-y-2">

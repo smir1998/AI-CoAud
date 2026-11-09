@@ -20,6 +20,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: frontend tests
+        run: npm test
       - name: typecheck
         run: npx tsc --noEmit
       - name: build
@@ -87,6 +89,7 @@ jobs:
         run: |
           pip install --quiet "pip-audit>=2.7,<3" "bandit>=1.8,<2"
           python -m pip install -r backend/requirements.txt
+          python -m unittest discover -s backend/tests -v
           echo "── dependency graph audit ──"
           pip-audit --desc --progress-spinner off $(python -c 'import tomllib; print(" ".join(f"--ignore-vuln {v}" for v in tomllib.load(open(".pip-audit.toml", "rb"))["options"]["ignore"]))')
           echo "── source scan (medium severity +) ──"

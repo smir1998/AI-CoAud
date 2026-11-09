@@ -38,7 +38,7 @@ const initialAgents = () =>
 const zeroCounts = (): Record<Severity, number> => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
 
 const initialShared = (): SharedSnapshot => ({
-  source: "—", sourceUrl: null, sha: "—", title: "—", author: "—", base: "—", head: "—",
+  source: "—", sourceUrl: null, coverageNote: null, sha: "—", title: "—", author: "—", base: "—", head: "—",
   files: 0, additions: 0, deletions: 0, detectorMode: "deterministic rules",
   llmModel: null, tokensIn: 0, tokensOut: 0, costUsd: 0,
   findings: 0, counts: zeroCounts(), patches: 0, risk: null, posted: null, elapsedMs: 0,
@@ -78,6 +78,7 @@ export function useAuditEngine() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [input, setInput] = useState<AuditInput>({ kind: "fixture", fixture: FIXTURES[0] });
   const genRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
@@ -143,6 +144,9 @@ export function useAuditEngine() {
   }, []);
 
   const run = useCallback((nextInput: AuditInput, s?: Settings) => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
     const gen = ++genRef.current;
     const cfg = s ?? loadSettings();
     setInput(nextInput);
@@ -151,7 +155,8 @@ export function useAuditEngine() {
     void runPipeline(nextInput, cfg, (e) => {
       if (cancelled()) return;
       setState((prev) => apply(prev, e));
-    }, cancelled).finally(() => {
+    }, cancelled, controller.signal).finally(() => {
+      if (controllerRef.current === controller) controllerRef.current = null;
       if (cancelled()) return; // a newer run owns the state now
       setState((prev) => (prev.status === "running" ? { ...prev, status: "done" } : prev));
     });
@@ -160,7 +165,15 @@ export function useAuditEngine() {
   const rerun = useCallback(() => run(input, settings), [run, input, settings]);
   const cancel = useCallback(() => {
     genRef.current++;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
     setState((prev) => (prev.status === "running" ? { ...prev, status: "done" } : prev));
+  }, []);
+
+  useEffect(() => () => {
+    genRef.current++;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
   }, []);
 
   // audit the first fixture on load so the console opens alive

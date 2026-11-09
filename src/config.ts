@@ -37,6 +37,7 @@ export const CONFIG = {
     maxDiffChars: 24_000,      // per-PR context budget for LLM calls
     maxInlineComments: 50,     // GitHub review payload cap
     maxFilesForLLM: 20,        // beyond this: deterministic engine only
+    maxFilesPerAudit: 200,     // cap browser-side PR file coverage
   },
 
   storage: {
