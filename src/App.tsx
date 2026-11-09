@@ -116,9 +116,9 @@ export default function App() {
                 <WebhookIcon className="h-3.5 w-3.5 text-cyanx" />
                 api.github.com · direct from browser
               </span>
-              <span className="flex items-center gap-1.5 rounded-md border border-emx/40 bg-emx/[0.07] px-2 py-1 text-emx">
-                <span className="led-pulse inline-block h-1.5 w-1.5 rounded-full bg-emx" style={{ color: "#10b981" }} />
-                online
+              <span className="flex items-center gap-1.5 rounded-md border border-orchid/40 bg-orchid/[0.07] px-2 py-1 text-orchid">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-orchid" />
+                ready
               </span>
             </div>
           </div>

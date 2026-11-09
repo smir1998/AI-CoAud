@@ -127,8 +127,11 @@ async function llmSecurityPass(
     emit({ kind: "log", agent: "security", text: `← ${res.model}: ${res.inputTokens}+${res.outputTokens} tok` });
     const raw = extractJsonArray<LLMFindingRaw>(res.text);
     for (const r of raw) {
-      if (!Number.isFinite(r.line) || !r.title) continue;
-      const line = added.some((a) => a.line === r.line) ? r.line : added[0].line;
+      if (!Number.isInteger(r.line) || !r.title) continue;
+      // Never move a model finding onto a different line: that would make an
+      // unsupported claim appear to target code changed by this pull request.
+      if (!added.some((a) => a.line === r.line)) continue;
+      const line = r.line;
       const sev: Severity = SEV_ORDER.includes(r.severity) ? r.severity : "medium";
       findings.push({
         id: `${f.path}:${line}:llm-${findings.length}`,

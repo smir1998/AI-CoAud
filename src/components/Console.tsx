@@ -54,7 +54,7 @@ export default function Console() {
   }, [status]);
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => forceTick((n) => n + 1), 250);
+    const id = setInterval(() => forceTick((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, [running]);
 

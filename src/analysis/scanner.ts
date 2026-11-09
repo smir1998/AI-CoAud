@@ -357,7 +357,7 @@ const STYLE_TESTS: { id: string; re: RegExp; severity: Severity; confidence: num
 
 function scanStyleFiles(files: ParsedFile[]): Finding[] {
   const out: Finding[] = [];
-  const seenLines = new Map<string, number>();
+  const seenLines = new Map<string, { count: number; file: ParsedFile; line: number }>();
   let n = 0;
 
   for (const f of files) {
@@ -397,17 +397,19 @@ function scanStyleFiles(files: ParsedFile[]): Finding[] {
       }
       if (a.text.length > 120) out.push(mk("style", "rule", "STY-008", "info", 0.95, f.path, a.line, "Line exceeds 120 characters", "Overlong lines hurt review quality and side-by-side diffs.", "Wrap or extract.", f, a.line));
       const key = a.text.trim();
-      if (key.length > 24) seenLines.set(key, (seenLines.get(key) || 0) + 1);
+      if (key.length > 24) {
+        const existing = seenLines.get(key);
+        if (existing) existing.count++;
+        else seenLines.set(key, { count: 1, file: f, line: a.line });
+      }
       n++;
     }
   }
-  // duplication across the diff
-  for (const [text, count] of seenLines) {
-    if (count >= 3) {
-      const owner = files.flatMap((f) => f.added.filter((a) => a.text.trim() === text).map((a) => ({ f, a }))).slice(0, 1);
-      for (const { f, a } of owner) {
-        out.push(mk("style", "rule", "STY-010", "low", 0.7, f.path, a.line, "Duplicated code block", `The same logic appears ${count}× across the diff — fixes will drift between copies.`, "Extract a shared helper.", f, a.line));
-      }
+  // Duplication owners are captured during the first pass, avoiding a second
+  // full scan of every added line for each repeated line.
+  for (const entry of seenLines.values()) {
+    if (entry.count >= 3) {
+      out.push(mk("style", "rule", "STY-010", "low", 0.7, entry.file.path, entry.line, "Duplicated code block", `The same logic appears ${entry.count}× across the diff — fixes will drift between copies.`, "Extract a shared helper.", entry.file, entry.line));
     }
   }
   return out;
