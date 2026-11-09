@@ -66,9 +66,9 @@ const SETTINGS_KEY = CONFIG.storage.settings;
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { provider: "none", apiKey: "", model: CONFIG.llm.anthropicModel, ghToken: "", ...JSON.parse(raw) } as Settings;
+    if (raw) return { provider: "none", apiKey: "", model: CONFIG.llm.anthropicModel, ghToken: "", specialistReview: false, ...JSON.parse(raw) } as Settings;
   } catch { /* corrupted storage */ }
-  return { provider: "none", apiKey: "", model: CONFIG.llm.anthropicModel, ghToken: "" };
+  return { provider: "none", apiKey: "", model: CONFIG.llm.anthropicModel, ghToken: "", specialistReview: false };
 }
 
 let logSeq = 0;
