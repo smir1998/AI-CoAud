@@ -13,6 +13,7 @@ from typing import Optional
 
 from agents import refactor_agent, run_security_agent, run_style_agent
 from github_client import GitHubClient, PRMeta
+from limits import MAX_FILE_BYTES, MAX_PR_TOTAL_BYTES
 from state import AuditState, Finding, Severity, StateStore
 from tools import ToolRunner
 from validation import drop_off_hunk_findings, validate_patches
@@ -94,39 +95,77 @@ class AuditPipeline:
         assert self.github, "GITHUB_TOKEN required for fetching"
         meta: PRMeta = await self.github.get_pull(self.owner, self.repo, self.number)
         state.commit_sha, state.base_ref, state.head_ref = meta.head_sha, meta.base_ref, meta.head_ref
+        state.changed_files = [f.path for f in meta.files]
+        state.additions = sum(f.additions for f in meta.files)
+        state.deletions = sum(f.deletions for f in meta.files)
+        total_bytes = 0
         for f in meta.files:
-            if f.patch:
-                state.changed_files.append(f.path)
-                added, image = parse_diff(f.patch)
-                state.added_lines[f.path] = added
-                state.post_image[f.path] = image
-                state.additions += f.additions
-                state.deletions += f.deletions
+            if not f.patch:
+                state.incomplete_reasons.append(f"diff unavailable for {f.path}")
+                continue
+            if len(f.patch.encode("utf-8")) > MAX_FILE_BYTES:
+                state.incomplete_reasons.append(f"diff exceeds per-file limit for {f.path}")
+                continue
+
+            added, _ = parse_diff(f.patch)
+            state.added_lines[f.path] = added
+            if f.status == "removed":
+                continue
+
+            try:
+                content = await self.github.get_file(self.owner, self.repo, f.path, meta.head_sha)
+            except Exception as exc:
+                state.incomplete_reasons.append(f"could not fetch full file {f.path}: {exc}")
+                continue
+            content_bytes = len(content.encode("utf-8"))
+            if total_bytes + content_bytes > MAX_PR_TOTAL_BYTES:
+                state.incomplete_reasons.append(
+                    f"pull request exceeds the {MAX_PR_TOTAL_BYTES}-byte total audit limit"
+                )
+                break
+            state.post_image[f.path] = content
+            total_bytes += content_bytes
         state.say("orchestrator",
                   f"fetched {len(state.changed_files)} files (+{state.additions}/−{state.deletions}) @ {state.commit_sha[:10]}")
         self.store.save(state)
 
     async def _parallel_audit(self, state: AuditState) -> None:
         state.stage = "audit"
+        incomplete: list[str] = []
         self.store.save(state)
-        security, style, tool_results = await asyncio.gather(
-            run_security_agent(state),
-            run_style_agent(state),
-            ToolRunner(state.post_image).run_all(),
-            return_exceptions=True,
-        )
+        runner = ToolRunner(state.post_image)
+        try:
+            security, style, tool_results = await asyncio.gather(
+                run_security_agent(state),
+                run_style_agent(state),
+                runner.run_all(),
+                return_exceptions=True,
+            )
+        finally:
+            runner.cleanup()
         for name, res in (("security", security), ("style", style)):
             if isinstance(res, BaseException):
+                incomplete.append(f"{name} agent failed")
                 state.say(name, f"agent error: {res}")
             else:
                 state.findings.extend(res)
                 state.say(name, f"{len(res)} findings")
         if isinstance(tool_results, BaseException):
+            incomplete.append("static tools failed")
             state.say("tools", f"tool runner error: {tool_results}")
         else:
             state.tool_hits = [h for r in tool_results for h in r["hits"]]  # type: ignore[index]
+            incomplete.extend(
+                f"{result['tool']} {result['status']}"
+                for result in tool_results
+                if result["status"] != "ok"
+            )
             state.say("tools", f"{sum(len(r['hits']) for r in tool_results)} hits "
                                f"({', '.join(r['tool'] + ':' + r['status'] for r in tool_results)})")
+        state.incomplete_reasons.extend(incomplete)
+        state.audit_complete = not state.incomplete_reasons
+        if state.incomplete_reasons:
+            state.say("review", "audit incomplete; auto-approval disabled: " + ", ".join(state.incomplete_reasons))
         self.store.save(state)
 
     def _corroborate(self, state: AuditState) -> None:
@@ -202,6 +241,9 @@ class AuditPipeline:
                 "",
             ]
         md += ["---", "_Posted by AI CoAudS — deterministic rules + LLM audit; patches validated before posting._"]
+        if not state.audit_complete:
+            details = ", ".join(state.incomplete_reasons) or "required checks did not complete"
+            md.insert(2, f"**Audit incomplete — no approval will be posted.** {details}")
         state.review_markdown = "\n".join(md)
         self.store.save(state)
 
@@ -222,9 +264,14 @@ class AuditPipeline:
         if not self.github:
             state.say("orchestrator", "no write token — review stored, not posted")
             return
-        event = "REQUEST_CHANGES" if any(
-            f.severity in (Severity.CRITICAL, Severity.HIGH) for f in state.findings
-        ) else "APPROVE" if state.findings == [] else "COMMENT"
+        if not state.audit_complete:
+            event = "COMMENT"
+        elif any(f.severity in (Severity.CRITICAL, Severity.HIGH) for f in state.findings):
+            event = "REQUEST_CHANGES"
+        elif not state.findings:
+            event = "APPROVE"
+        else:
+            event = "COMMENT"
         comments = [
             {"path": f.file, "line": f.line, "side": "RIGHT",
              "body": f"**{f.severity.value.upper()}** — {f.title}\n\n{f.issue}\n\n> {f.recommendation}"}

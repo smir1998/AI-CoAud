@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from limits import MAX_FILE_BYTES, MAX_PR_FILES, MAX_PR_TOTAL_BYTES
+
 log = logging.getLogger("coauds.tools")
 
 TOOL_TIMEOUT = 90  # seconds per tool, hard cap
@@ -44,13 +46,33 @@ async def _run(cmd: list[str], cwd: str | None = None) -> tuple[int, str, str]:
 
 class ToolRunner:
     def __init__(self, files: dict[str, str], requirements: str | None = None):
+        if len(files) > MAX_PR_FILES:
+            raise ValueError(f"audit input exceeds the {MAX_PR_FILES}-file limit")
         self.files = files            # relative path -> post-image content
         self.requirements = requirements
         self.tmp = tempfile.TemporaryDirectory(prefix="coauds-")
-        for rel, content in files.items():
-            p = Path(self.tmp.name) / rel
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
+        root = Path(self.tmp.name).resolve()
+        total_bytes = 0
+        try:
+            for rel, content in files.items():
+                if not isinstance(rel, str) or not rel or "\\" in rel or "\x00" in rel:
+                    raise ValueError("audit input contains an unsafe file path")
+                parts = rel.split("/")
+                if rel.startswith("/") or any(part in ("", ".", "..") for part in parts):
+                    raise ValueError("audit input contains an unsafe file path")
+                size = len(content.encode("utf-8"))
+                if size > MAX_FILE_BYTES:
+                    raise ValueError(f"{rel} exceeds the {MAX_FILE_BYTES}-byte per-file limit")
+                total_bytes += size
+                if total_bytes > MAX_PR_TOTAL_BYTES:
+                    raise ValueError(f"audit input exceeds the {MAX_PR_TOTAL_BYTES}-byte total limit")
+                p = (root / rel).resolve()
+                p.relative_to(root)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(content, encoding="utf-8")
+        except Exception:
+            self.tmp.cleanup()
+            raise
 
     def cleanup(self) -> None:
         self.tmp.cleanup()
@@ -68,6 +90,9 @@ class ToolRunner:
 
     async def _wrap(self, name: str, fn) -> dict:
         t0 = time.time()
+        if name == "pip-audit" and not self.requirements:
+            log.info("pip-audit has no target dependency manifest — skipped")
+            return {"tool": name, "status": "skipped", "hits": [], "ms": 0}
         if shutil.which(name.split()[0]) is None:
             log.info("%s not installed — skipped", name)
             return {"tool": name, "status": "skipped", "hits": [], "ms": 0}

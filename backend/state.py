@@ -70,7 +70,7 @@ class AuditState(BaseModel):
     changed_files: list[str] = Field(default_factory=list)
     additions: int = 0
     deletions: int = 0
-    post_image: dict[str, str] = Field(default_factory=dict)   # file -> reconstructed content
+    post_image: dict[str, str] = Field(default_factory=dict)   # file -> full content at audited commit
     added_lines: dict[str, list[int]] = Field(default_factory=dict)  # file -> new-file line numbers
     tool_hits: list[dict] = Field(default_factory=list, exclude=True)
     findings: list[Finding] = Field(default_factory=list)
@@ -80,6 +80,8 @@ class AuditState(BaseModel):
     review_markdown: str = ""
     review_url: Optional[str] = None
     posted: bool = False
+    audit_complete: bool = False  # required agents and scanners all completed
+    incomplete_reasons: list[str] = Field(default_factory=list)
     status: str = "queued"        # queued | running | done | failed
     stage: str = "fetch"
     error: Optional[str] = None

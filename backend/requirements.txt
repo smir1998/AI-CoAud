@@ -9,9 +9,8 @@ pydantic>=2.11,<3.0
 pydantic-settings>=2.14.2,<3.0
 tenacity>=8.2,<10.0
 starlette<2.0
-
-# — agent stack (single anchor – its whole tree resolves freely) —————
-crewai==1.15.18
+# — agent stack (1.15.39 requires the patched MCP SDK line) ————————
+crewai==1.15.39
 
 # — deterministic scanners (pinned – independent, self-contained wheels) —
 semgrep>=1.0,<2.0

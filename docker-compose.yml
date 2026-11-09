@@ -21,8 +21,10 @@ services:
   api:
     build: ./backend
     environment:
+      APP_ENV: ${APP_ENV:-production}
       GITHUB_TOKEN: ${GITHUB_TOKEN:?set GITHUB_TOKEN in .env}
-      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?set GITHUB_WEBHOOK_SECRET in .env}
+      AUDIT_API_TOKEN: ${AUDIT_API_TOKEN:?set AUDIT_API_TOKEN in .env}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-4-5}
