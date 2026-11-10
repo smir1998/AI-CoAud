@@ -4,6 +4,8 @@
 
 [![CI](https://github.com/smir1998/AI-CoAud/actions/workflows/ci.yml/badge.svg)](https://github.com/smir1998/AI-CoAud/actions/workflows/ci.yml)
 
+**Live app:** [smir1998.github.io/AI-CoAud](https://smir1998.github.io/AI-CoAud/)
+
 AI CoAudS combines deterministic security and code-quality checks with optional LLM review. The React console runs directly in your browser. An optional Python service accepts GitHub pull-request webhooks and runs queued audits.
 
 ## Choose an audit source
