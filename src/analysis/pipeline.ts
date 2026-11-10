@@ -5,12 +5,12 @@
 
 import {
   SEV_ORDER,
-  parseUnifiedDiff, scanFiles, validatePatch,
+  parseUnifiedDiff, parseRepositorySnapshotFiles, scanFiles, validatePatch,
   type Finding, type FindingPatch, type ParsedFile, type Severity,
 } from "./scanner";
 import {
   fetchPullRequest, postPullRequestReview, callLLM, estimateCost,
-  extractJsonArray, extractJsonObject,
+  extractJsonArray, extractJsonObject, fetchRepositorySnapshot,
   type PRMeta, type Provider, type InlineComment,
 } from "./external";
 import { CONFIG } from "../config";
@@ -21,6 +21,7 @@ export type AgentId = "orchestrator" | "style" | "security" | "tools" | "refacto
 
 export type AuditInput =
   | { kind: "github"; owner: string; repo: string; pr: number; ref: string }
+  | { kind: "repository"; owner: string; repo: string; branch: string }
   | { kind: "diff"; text: string }
   | { kind: "fixture"; fixture: Fixture };
 
@@ -33,6 +34,7 @@ export interface Settings {
 }
 
 export interface SharedSnapshot {
+  sourceKind: "github" | "repository" | "diff" | "fixture";
   source: string;
   sourceUrl: string | null;
   coverageNote: string | null;
@@ -111,13 +113,13 @@ interface LLMFindingRaw {
 
 async function llmSecurityPass(
   files: ParsedFile[], settings: Settings,
-  emit: Emit, cancelled: () => boolean, signal?: AbortSignal,
+  emit: Emit, cancelled: () => boolean, signal?: AbortSignal, lineScope: "added" | "scanned" = "added",
 ): Promise<{ findings: Finding[]; tokensIn: number; tokensOut: number }> {
   const findings: Finding[] = [];
   let tokensIn = 0, tokensOut = 0;
   const system = [
     "You are a senior application-security auditor reviewing a pull request.",
-    "Rules: report ONLY genuine issues on the ADDED lines, citing the exact line numbers given.",
+    `Rules: report ONLY genuine issues on the ${lineScope === "added" ? "ADDED" : "SCANNED"} lines, citing the exact line numbers given.`,
     "No style nits, no speculation about code that is not shown, no duplicates.",
     "Respond with ONLY a JSON array. Each item:",
     '{"line": <int>, "severity": "critical|high|medium|low|info", "confidence": <0..1>, "title": <str>, "issue": <str>, "recommendation": <str>, "cwe": <str|null>}',
@@ -127,7 +129,7 @@ async function llmSecurityPass(
     if (cancelled()) break;
     const added = f.added.slice(0, 220);
     if (added.length === 0) continue;
-    const prompt = `File: ${f.path} (language: ${f.lang})\nAdded lines:\n` +
+    const prompt = `File: ${f.path} (language: ${f.lang})\n${lineScope === "added" ? "Added" : "Scanned"} lines:\n` +
       added.map((a) => `L${a.line}: ${a.text}`).join("\n");
     emit({ kind: "log", agent: "security", text: `→ ${f.path}: ${added.length} added lines to ${settings.model}` });
     const res = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model, system, prompt, signal);
@@ -180,9 +182,10 @@ function buildReview(findings: Finding[], files: ParsedFile[], shared: SharedSna
   const overall = counts.critical > 0 || counts.high > 0 ? "high" : counts.medium > 0 ? "medium" : "low";
   const ranked = [...findings].sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || b.confidence - a.confidence);
   const top = ranked[0];
-  const headline = top ? `${top.title} (${top.file}:${top.line})` : "No issues found in changed lines";
+  const lineScope = shared.sourceKind === "repository" ? "scanned source lines" : "changed lines";
+  const headline = top ? `${top.title} (${top.file}:${top.line})` : `No issues found in ${lineScope}`;
   const summary = `${shared.coverageNote ? `Partial coverage: ${shared.coverageNote} ` : ""}${total === 0
-    ? `Clean audit across ${files.length} file(s): the deterministic engine and ${shared.detectorMode} found nothing actionable in the changed lines.`
+    ? `Clean audit across ${files.length} file(s): the deterministic engine and ${shared.detectorMode} found nothing actionable in the ${lineScope}.`
     : `Top priority: ${headline}. ${counts.high + counts.critical} high-or-critical item(s) should block the merge; suggested fixes are attached where a safe transformation exists.`}`;
 
   const lines: string[] = [
@@ -205,7 +208,9 @@ function buildReview(findings: Finding[], files: ParsedFile[], shared: SharedSna
     lines.push("");
   }
   if (ranked.length > 12) lines.push(`_…and ${ranked.length - 12} more finding(s) in the audit log._`, "");
-  lines.push("---", `_Posted by AI CoAudS · deterministic rules + LLM audit · patches validated before posting_ ${postedNote}`);
+  lines.push("---", shared.sourceKind === "repository"
+    ? `_AI CoAudS repository snapshot · deterministic rules + optional LLM audit · no changes posted_ ${postedNote}`
+    : `_AI CoAudS PR/diff audit · deterministic rules + optional LLM audit · patches validated before posting_ ${postedNote}`);
 
   const inline: InlineComment[] = ranked.slice(0, 10).map((f) => ({
     path: f.file,
@@ -239,19 +244,31 @@ export async function runPipeline(
   let title = "Pasted diff";
   let author = "you";
   let base = "—", head = "—";
+  let sourceKind: SharedSnapshot["sourceKind"] = "diff";
   let coverageNote: string | null = null;
 
   /* stage 1 — webhook received */
   stage(0);
   agent("orchestrator", "running");
   if (input.kind === "github") {
+    sourceKind = "github";
     sourceLabel = `${input.owner}/${input.repo}#${input.pr}`;
     sourceUrl = `https://github.com/${input.owner}/${input.repo}/pull/${input.pr}`;
     log("orchestrator", `pull_request · opened · ${sourceLabel}`);
+  } else if (input.kind === "repository") {
+    sourceKind = "repository";
+    sourceLabel = `${input.owner}/${input.repo}@${input.branch || "default branch"}`;
+    title = "Repository branch snapshot";
+    author = "—";
+    head = input.branch || "default branch";
+    sourceUrl = `https://github.com/${input.owner}/${input.repo}`;
+    log("orchestrator", `repository snapshot · ${sourceLabel}`);
   } else if (input.kind === "diff") {
+    sourceKind = "diff";
     sourceLabel = "pasted unified diff";
     log("orchestrator", `manual audit · unified diff (${input.text.length} chars)`);
   } else {
+    sourceKind = "fixture";
     const fx = input.fixture;
     sourceLabel = `${fx.repo}#${fx.prNumber}`;
     sourceUrl = fx.url;
@@ -262,10 +279,12 @@ export async function runPipeline(
 
   /* stage 2 — fetch metadata + diff */
   stage(1);
-  log("orchestrator", "GET pulls/{n} + pulls/{n}/files — metadata, patches, head sha");
+  log("orchestrator", input.kind === "repository"
+    ? "GET repository metadata + branch tree — source files pinned to a commit sha"
+    : "GET pulls/{n} + pulls/{n}/files — metadata, patches, head sha");
   try {
     if (input.kind === "github") {
-      const data = await fetchPullRequest(input.owner, input.repo, input.pr, signal);
+      const data = await fetchPullRequest(input.owner, input.repo, input.pr, signal, settings.ghToken);
       meta = data.meta;
       sha = data.meta.sha.slice(0, 12); title = data.meta.title; author = data.meta.author;
       base = data.meta.base; head = data.meta.head; sourceUrl = data.meta.url;
@@ -287,6 +306,21 @@ export async function runPipeline(
       if (coverageNote) log("orchestrator", `⚠ ${coverageNote}`);
       log("orchestrator", `fetched ${data.files.length} file(s) · head ${sha}`);
       emit({ kind: "state", patch: { coverageNote } });
+    } else if (input.kind === "repository") {
+      const snapshot = await fetchRepositorySnapshot(input.owner, input.repo, input.branch, settings.ghToken, signal);
+      files = parseRepositorySnapshotFiles(snapshot.files);
+      sha = snapshot.sha;
+      head = snapshot.branch;
+      sourceLabel = `${input.owner}/${input.repo}@${snapshot.branch}`;
+      sourceUrl = `https://github.com/${input.owner}/${input.repo}/tree/${snapshot.branch.split("/").map(encodeURIComponent).join("/")}`;
+      title = `${input.repo} · ${snapshot.branch}`;
+      author = "—";
+      if (snapshot.partialCoverage) {
+        coverageNote = `Scanned ${snapshot.files.length} of ${snapshot.eligibleFiles} eligible text files at ${snapshot.branch}; ${snapshot.skippedFiles} files were skipped or excluded by repository-scan limits. ${snapshot.eligibleFiles > 40 && !settings.ghToken.trim() ? "Add a GitHub token to raise the unauthenticated 40-file cap." : ""}`.trim();
+        log("orchestrator", `⚠ ${coverageNote}`);
+      }
+      emit({ kind: "state", patch: { sourceKind, source: sourceLabel, sourceUrl, sha, title, author, head, coverageNote } });
+      log("orchestrator", `fetched ${snapshot.files.length}/${snapshot.eligibleFiles} eligible source file(s) · commit ${sha.slice(0, 12)}`);
     } else {
       const text = input.kind === "diff" ? input.text : input.fixture.diff;
       files = parseUnifiedDiff(text);
@@ -306,7 +340,7 @@ export async function runPipeline(
   emit({
     kind: "state",
     patch: {
-      source: sourceLabel, sourceUrl, sha, title, author, base, head,
+      sourceKind, source: sourceLabel, sourceUrl, sha, title, author, base, head,
       files: files.length, additions, deletions,
       detectorMode: useLLM ? `rules + llm${settings.specialistReview ? " + 5 specialists" : ""}` : "deterministic rules",
     },
@@ -345,7 +379,8 @@ export async function runPipeline(
   let llmFindingCount = 0;
   if (useLLM) {
     try {
-      const llm = await llmSecurityPass(files, settings, emit, isCancelled, signal);
+      const lineScope = sourceKind === "repository" ? "scanned" : "added";
+      const llm = await llmSecurityPass(files, settings, emit, isCancelled, signal, lineScope);
       if (isCancelled()) return;
       tokensIn = llm.tokensIn; tokensOut = llm.tokensOut;
       llmFindingCount = llm.findings.length;
@@ -374,7 +409,7 @@ export async function runPipeline(
         try {
           const result = await callLLM(settings.provider as "anthropic" | "openai", settings.apiKey, settings.model,
             `You are a careful application security specialist focused on ${specialist.focus}.`,
-            specialistPrompt(specialist, files), signal);
+            specialistPrompt(specialist, files, sourceKind === "repository" ? "scanned" : "added"), signal);
           return { specialist, findings: parseSpecialistFindings(specialist, files, result.text), input: result.inputTokens, output: result.outputTokens };
         } catch (error) {
           if (isCancelled()) return { specialist, findings: [], input: 0, output: 0 };
@@ -468,7 +503,7 @@ export async function runPipeline(
   stage(5);
   agent("review", "running");
   const sharedSoFar: SharedSnapshot = {
-    source: sourceLabel, sourceUrl, sha, title, author, base, head,
+    sourceKind, source: sourceLabel, sourceUrl, sha, title, author, base, head,
     coverageNote,
     files: files.length, additions, deletions,
     detectorMode: useLLM ? `rules + llm${settings.specialistReview ? " + 5 specialists" : ""}` : "deterministic rules",
@@ -499,7 +534,10 @@ export async function runPipeline(
     const file = files.find((x) => x.path === f.file);
     return file?.added.some((a) => a.line === f.line) ?? false;
   });
-  validations.push({ text: "every finding maps to a changed line", ok: onChangedLines });
+  validations.push({
+    text: sourceKind === "repository" ? "every finding maps to a scanned source line" : "every finding maps to a changed line",
+    ok: onChangedLines,
+  });
   validations.push({ text: `review markdown rendered (${review.markdown.length} chars)`, ok: review.markdown.length > 0 });
   validations.push({ text: `inline comments within GitHub limit (${review.inline.length}/50)`, ok: review.inline.length <= 50 });
   emit({ kind: "validations", items: validations });
@@ -530,6 +568,9 @@ export async function runPipeline(
   } else if (input.kind === "github") {
     emit({ kind: "post", text: `review ready (${event}) — add a GitHub token in Settings to auto-post`, url: null });
     log("orchestrator", "no GitHub token configured — review held locally (copy/download from the Review tab)");
+  } else if (input.kind === "repository") {
+    emit({ kind: "post", text: "repository snapshot audit complete — no changes were posted", url: null });
+    log("orchestrator", "local branch snapshot complete — nothing was posted to GitHub");
   } else {
     emit({ kind: "post", text: "audit complete — run against a GitHub PR link to post this review back automatically", url: null });
     log("orchestrator", "local audit complete — nothing to post (source is not a GitHub PR)");

@@ -19,6 +19,7 @@ export interface ParsedFile {
   added: { line: number; text: string }[];
   additions: number;
   deletions: number;
+  snapshot?: boolean;
 }
 
 export interface FindingPatch {
@@ -127,6 +128,24 @@ export function parseUnifiedDiff(patch: string, fallbackPath?: string): ParsedFi
     }
   }
   return files.filter((f) => f.path !== "/dev/null" && f.rows.length > 0);
+}
+
+export function parseRepositorySnapshotFiles(files: { path: string; content: string }[]): ParsedFile[] {
+  return files.map(({ path, content }) => {
+    const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    return {
+      path,
+      lang: langOf(path),
+      rows: lines.map((text, index) => ({ type: "ctx" as const, oldNo: null, newNo: index + 1, text })),
+      // For a repository snapshot every source line is auditable, but it is
+      // intentionally represented as context in the viewer rather than as a diff addition.
+      added: lines.map((text, index) => ({ line: index + 1, text })),
+      additions: lines.length,
+      deletions: 0,
+      snapshot: true,
+    };
+  });
 }
 
 /* ── rule engine ──────────────────────────────────────────── */

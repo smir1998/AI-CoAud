@@ -61,8 +61,9 @@ export default function DiffViewer({ files, findings, activeId, onPick }: Props)
               }`}>
               {worst && <span className="h-1.5 w-1.5 rounded-full" style={{ background: SEV_META[worst].color }} />}
               {f.path}
-              <span className="text-emx">+{f.additions}</span>
-              <span className="text-rosex">−{f.deletions}</span>
+              {f.snapshot ? <span className="text-ink-500">{f.additions} lines</span> : (
+                <><span className="text-emx">+{f.additions}</span><span className="text-rosex">−{f.deletions}</span></>
+              )}
               {hits > 0 && <span className="rounded bg-ink-700/70 px-1 text-[9px] text-ink-200">{hits}</span>}
             </button>
           );
@@ -79,7 +80,7 @@ export default function DiffViewer({ files, findings, activeId, onPick }: Props)
               </div>
             );
           }
-          const marked = row.type === "add" ? findings.filter((f) => f.file === file.path && f.line === row.newNo) : [];
+          const marked = row.newNo !== null ? findings.filter((f) => f.file === file.path && f.line === row.newNo) : [];
           const sev = topSeverity(marked);
           const isActive = !!activeFinding && activeFinding.file === file.path && activeFinding.line === row.newNo;
           const refKey = `${file.path}:${row.newNo}`;

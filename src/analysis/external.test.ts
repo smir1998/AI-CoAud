@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { callLLM, fetchPullRequest } from "./external";
+import { callLLM, fetchPullRequest, fetchRepositorySnapshot, parseRepoRef } from "./external";
 
 const pull = {
   title: "large change",
@@ -75,6 +75,65 @@ describe("fetchPullRequest", () => {
     const requestSignals = fetchMock.mock.calls.map(([, init]) => init?.signal);
     controller.abort();
     expect(requestSignals.every((signal) => signal?.aborted)).toBe(true);
+  });
+
+  it("sends the saved GitHub token with private pull request reads", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = new URL(String(input));
+      return jsonResponse(url.pathname.endsWith("/pulls/5") ? pull : []);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchPullRequest("acme", "private", 5, undefined, "ghp_test-token");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every(([, init]) => init?.headers && new Headers(init.headers).get("Authorization") === "Bearer ghp_test-token")).toBe(true);
+  });
+
+  it("parses repository URLs and snapshots only bounded text files at the selected branch", async () => {
+    const encode = (content: string) => btoa(content);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/repos/acme/demo") return jsonResponse({ default_branch: "main" });
+      if (url.pathname.endsWith("/branches/release%2F2026")) return jsonResponse({ commit: { sha: "commit-sha" } });
+      if (url.pathname.endsWith("/git/trees/commit-sha")) return jsonResponse({ truncated: false, tree: [
+        { path: "src/app.ts", type: "blob", sha: "blob-app", size: 18 },
+        { path: "README.md", type: "blob", sha: "blob-readme", size: 8 },
+        { path: "node_modules/dependency/index.ts", type: "blob", sha: "ignored", size: 10 },
+        { path: "assets/logo.png", type: "blob", sha: "binary", size: 20 },
+      ] });
+      const blob = url.pathname.endsWith("/blob-app") ? "const x = 1;\n" : "# project\n";
+      return jsonResponse({ encoding: "base64", content: encode(blob) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(parseRepoRef("https://github.com/acme/demo/")).toEqual({ owner: "acme", repo: "demo" });
+    const result = await fetchRepositorySnapshot("acme", "demo", "release/2026", "ghp_test-token");
+
+    expect(result).toMatchObject({ branch: "release/2026", sha: "commit-sha", eligibleFiles: 2, skippedFiles: 0, partialCoverage: false });
+    expect(result.files.map((file) => file.path)).toEqual(["README.md", "src/app.ts"]);
+    expect(fetchMock.mock.calls.every(([, init]) => new Headers(init?.headers).get("Authorization") === "Bearer ghp_test-token")).toBe(true);
+  });
+
+  it("skips unusually tall files and reports partial branch coverage", async () => {
+    const tallFile = Array.from({ length: 5_001 }, (_, index) => `const n${index} = ${index};`).join("\n");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/repos/acme/demo") return jsonResponse({ default_branch: "main" });
+      if (url.pathname.endsWith("/branches/main")) return jsonResponse({ commit: { sha: "commit-sha" } });
+      if (url.pathname.endsWith("/git/trees/commit-sha")) return jsonResponse({ truncated: false, tree: [
+        { path: "src/a-tall.ts", type: "blob", sha: "tall", size: tallFile.length },
+        { path: "src/z-small.ts", type: "blob", sha: "small", size: 9 },
+      ] });
+      const content = url.pathname.endsWith("/tall") ? tallFile : "const ok = 1;";
+      return jsonResponse({ encoding: "base64", content: btoa(content) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchRepositorySnapshot("acme", "demo", "", "token");
+
+    expect(result.files.map((file) => file.path)).toEqual(["src/z-small.ts"]);
+    expect(result).toMatchObject({ eligibleFiles: 2, skippedFiles: 1, partialCoverage: true });
   });
 
   it("aborts an in-flight provider request when the audit signal is cancelled", async () => {

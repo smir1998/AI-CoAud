@@ -38,6 +38,7 @@ const initialAgents = () =>
 const zeroCounts = (): Record<Severity, number> => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
 
 const initialShared = (): SharedSnapshot => ({
+  sourceKind: "diff",
   source: "—", sourceUrl: null, coverageNote: null, sha: "—", title: "—", author: "—", base: "—", head: "—",
   files: 0, additions: 0, deletions: 0, detectorMode: "deterministic rules",
   llmModel: null, tokensIn: 0, tokensOut: 0, costUsd: 0,
