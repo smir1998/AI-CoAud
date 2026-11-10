@@ -20,7 +20,7 @@ const MAX_FILES = 8;
 const MAX_LINES = 120;
 const MAX_LINE_CHARS = 300;
 
-export function specialistPrompt(specialist: SecuritySpecialist, files: ParsedFile[]): string {
+export function specialistPrompt(specialist: SecuritySpecialist, files: ParsedFile[], lineScope: "added" | "scanned" = "added"): string {
   let remaining = MAX_LINES;
   const sections: string[] = [];
   for (const file of files.slice(0, MAX_FILES)) {
@@ -30,8 +30,8 @@ export function specialistPrompt(specialist: SecuritySpecialist, files: ParsedFi
     sections.push(`File: ${file.path} (${file.lang})\n${added.map((row) => `L${row.line}: ${row.text.slice(0, MAX_LINE_CHARS)}`).join("\n")}`);
     if (!remaining) break;
   }
-  return `Review changed code as the ${specialist.name} security specialist. Focus: ${specialist.focus}.\n` +
-    `Rule: only report findings on the added lines below when they are confirmed security issues. Cite the exact added line number. ` +
+  return `Review code as the ${specialist.name} security specialist. Focus: ${specialist.focus}.\n` +
+    `Rule: only report findings on the ${lineScope} lines below when they are confirmed security issues. Cite the exact line number. ` +
     `Do not infer problems from code that is not shown. Return ONLY a JSON array; return [] if no issue. ` +
     `Each item must match: {"file": exact path, "line": integer, "severity": "critical|high|medium|low|info", "confidence": number, "title": string, "issue": string, "recommendation": string, "cwe": string|null}.\n\n` +
     (sections.join("\n\n") || "No added lines to review.");

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuditEngine, type LogLine } from "../engine/useAuditEngine";
 import type { AuditInput } from "../analysis/pipeline";
-import { parsePRRef, PROVIDER_MODELS, type Provider } from "../analysis/external";
+import { parsePRRef, parseRepoRef, PROVIDER_MODELS, type Provider } from "../analysis/external";
 import { CONFIG } from "../config";
 import { SEV_ORDER, type Severity } from "../analysis/scanner";
 import { AGENT_META, SEV_META, type AgentId } from "../types";
@@ -32,7 +32,7 @@ const STAGES = [
 ];
 
 type Tab = "diff" | "findings" | "review";
-type Mode = "github" | "diff" | "sample";
+type Mode = "github" | "repository" | "diff" | "sample";
 
 export default function Console() {
   const { state, settings, updateSettings, run, rerun, cancel } = useAuditEngine();
@@ -41,6 +41,8 @@ export default function Console() {
   const [tab, setTab] = useState<Tab>("findings");
   const [mode, setMode] = useState<Mode>("github");
   const [prInput, setPrInput] = useState("");
+  const [repoInput, setRepoInput] = useState("");
+  const [branchInput, setBranchInput] = useState("");
   const [diffInput, setDiffInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -67,6 +69,10 @@ export default function Console() {
       const ref = parsePRRef(prInput);
       if (!ref) return;
       input = { kind: "github", ...ref, ref: `${ref.owner}/${ref.repo}#${ref.pr}` };
+    } else if (mode === "repository") {
+      const ref = parseRepoRef(repoInput);
+      if (!ref) return;
+      input = { kind: "repository", ...ref, branch: branchInput.trim() };
     } else if (mode === "diff") {
       if (!diffInput.trim()) return;
       input = { kind: "diff", text: diffInput };
@@ -75,8 +81,9 @@ export default function Console() {
   };
 
   const githubValid = mode !== "github" || parsePRRef(prInput) !== null;
+  const repositoryValid = mode !== "repository" || parseRepoRef(repoInput) !== null;
   const diffValid = mode !== "diff" || diffInput.trim().length > 10;
-  const canRun = !running && githubValid && diffValid;
+  const canRun = !running && githubValid && repositoryValid && diffValid;
 
   const TABS: { id: Tab; label: string; icon: ReactNode; badge?: number }[] = [
     { id: "diff", label: "diff", icon: <DiffIcon className="h-3.5 w-3.5" />, badge: shared.files },
@@ -91,12 +98,12 @@ export default function Console() {
         <div className="flex flex-wrap items-center gap-2.5">
           <p className="panel-head mr-1"><WebhookIcon className="h-3.5 w-3.5 text-cyanx" /> audit source</p>
           <div className="flex overflow-hidden rounded-md border border-ink-600">
-            {(["github", "diff", "sample"] as Mode[]).map((m) => (
+            {(["github", "repository", "diff", "sample"] as Mode[]).map((m) => (
               <button key={m} onClick={() => setMode(m)}
                 className={`px-3 py-1.5 font-mono text-[10.5px] tracking-wide transition-colors ${
                   mode === m ? "bg-orchid/15 text-orchid" : "text-ink-400 hover:text-ink-200"
                 }`}>
-                {m === "github" ? "github pr" : m === "diff" ? "paste diff" : "samples"}
+                {m === "github" ? "github pr" : m === "repository" ? "repo branch" : m === "diff" ? "paste diff" : "samples"}
               </button>
             ))}
           </div>
@@ -109,6 +116,26 @@ export default function Console() {
               placeholder="owner/repo#123  or  https://github.com/owner/repo/pull/123"
               className="min-w-[260px] flex-1 rounded-md border border-ink-600 bg-ink-900 px-3 py-1.5 font-mono text-[11.5px] text-ink-100 placeholder:text-ink-500 focus:border-orchid/60 focus:outline-none"
             />
+          )}
+          {mode === "repository" && (
+            <div className="flex min-w-[320px] flex-1 flex-wrap gap-2">
+              <input
+                value={repoInput}
+                onChange={(e) => setRepoInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && canRun && startAudit()}
+                placeholder="owner/repo or https://github.com/owner/repo"
+                aria-label="GitHub repository"
+                className="min-w-[220px] flex-1 rounded-md border border-ink-600 bg-ink-900 px-3 py-1.5 font-mono text-[11.5px] text-ink-100 placeholder:text-ink-500 focus:border-orchid/60 focus:outline-none"
+              />
+              <input
+                value={branchInput}
+                onChange={(e) => setBranchInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && canRun && startAudit()}
+                placeholder="branch (default if blank)"
+                aria-label="Git branch"
+                className="min-w-[150px] flex-1 rounded-md border border-ink-600 bg-ink-900 px-3 py-1.5 font-mono text-[11.5px] text-ink-100 placeholder:text-ink-500 focus:border-orchid/60 focus:outline-none"
+              />
+            </div>
           )}
           {mode === "sample" && (
             <div className="flex flex-1 flex-wrap gap-1.5">
@@ -154,7 +181,7 @@ export default function Console() {
               <><Led color="#f43f5e" on /><span className="text-rosex">pipeline halted</span></>
             )}
             {status === "idle" && (
-              <><Led color="#64748b" on /><span className="text-ink-400">ready · enter a pull request, paste a diff, or choose a sample</span></>
+              <><Led color="#64748b" on /><span className="text-ink-400">ready · enter a PR, scan a repository branch, paste a diff, or choose a sample</span></>
             )}
           </span>
         </div>
@@ -172,6 +199,11 @@ export default function Console() {
         {mode === "github" && !githubValid && prInput.length > 0 && (
           <p className="mt-2 flex items-center gap-1.5 font-mono text-[10px] text-amberx">
             <AlertIcon className="h-3 w-3" /> expected “owner/repo#123” or a full pull-request URL
+          </p>
+        )}
+        {mode === "repository" && repoInput.length > 0 && !repositoryValid && (
+          <p className="mt-2 flex items-center gap-1.5 font-mono text-[10px] text-amberx">
+            <AlertIcon className="h-3 w-3" /> expected “owner/repo” or a GitHub repository URL
           </p>
         )}
 
@@ -219,14 +251,15 @@ export default function Console() {
               </label>
             )}
             <div>
-              <p className="pb-1.5 font-mono text-[9.5px] tracking-wider text-ink-500">GITHUB TOKEN (POSTS REVIEWS)</p>
+              <p className="pb-1.5 font-mono text-[9.5px] tracking-wider text-ink-500">GITHUB TOKEN (PRIVATE READS / PR REVIEWS)</p>
               <input type="password" value={settings.ghToken} onChange={(e) => updateSettings({ ghToken: e.target.value })}
                 placeholder="github_pat_… (repo scope)"
                 className="w-full rounded-md border border-ink-600 bg-ink-900 px-2.5 py-1.5 font-mono text-[11px] text-ink-100 placeholder:text-ink-500 focus:border-orchid/60 focus:outline-none" />
             </div>
             <p className="font-mono text-[9.5px] leading-relaxed text-ink-500 md:col-span-3">
               keys are stored in <b className="text-ink-300">this browser only</b> (localStorage) and sent directly to the provider / GitHub — never to any other server.
-              without an LLM key the audit runs the full deterministic engine; without a GitHub token the review is generated but not auto-posted.
+              without an LLM key the audit runs the full deterministic engine. public GitHub reads work without a token; private repository reads and posting PR reviews require one.
+              use contents read and pull requests read for private scans; add pull requests write only to auto-post PR reviews. the token stays in this browser.
             </p>
           </div>
         )}
@@ -342,7 +375,7 @@ function SharedStatePanel({ state }: { state: ReturnType<typeof useAuditEngine>[
     { key: "sh_title", label: "title", value: <span className="max-w-[170px] truncate text-ink-300">{s.title}</span> },
     { key: "sh_author", label: "author", value: s.author },
     { key: "sh_refs", label: "refs", value: `${s.base} ← ${s.head}` },
-    { key: "sh_files", label: "files", value: `${s.files}  (+${s.additions}/−${s.deletions})` },
+    { key: "sh_files", label: "files", value: s.sourceKind === "repository" ? `${s.files}  · ${s.additions} lines scanned` : `${s.files}  (+${s.additions}/−${s.deletions})` },
     { key: "sh_findings", label: "findings", value: s.findings },
     { key: "sh_patches", label: "patches", value: s.patches },
     { key: "sh_tokens", label: "llm tokens", value: s.tokensIn ? `${s.tokensIn}+${s.tokensOut} · $${s.costUsd.toFixed(4)}` : "—" },
